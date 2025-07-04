@@ -7,6 +7,8 @@ DriveSmart/.env
 server/.env
 
 # Builds y temporales
+DriveSmart/android
+DriveSmart/android/app/debug.keystore
 DriveSmart/android/app/build/
 DriveSmart/ios/build/
 DriveSmart/.expo/
