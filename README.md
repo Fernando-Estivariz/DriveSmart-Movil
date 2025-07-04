@@ -2,7 +2,7 @@
 
 <img src="./assets/login.png" alt="Pantalla Login" width="300" />
 
-Aplicación móvil desarrollada con **React Native** para la gestión inteligente de estacionamientos, visualización de restricciones y estadísticas urbanas, integrada con un backend en Node.js y PostgreSQL.
+Aplicación móvil desarrollada con **React Native** para la georreferenciacion inteligente de estacionamientos, visualización de restricciones y estadísticas urbanas, integrada con un backend en Node.js y PostgreSQL.
 
 ---
 
