@@ -72,7 +72,7 @@ Aplicación móvil desarrollada con **React Native** para la gestión inteligent
   <img src="./assets/login.png" alt="Pantalla Login" width="300" />
   <img src="./assets/carga.png" alt="Pantalla Dashboard" width="300" />
   <img src="./assets/carga.png" alt="Mapa interactivo" width="300" />
-  <img src="./assets/registrate.png" alt="Mapa Estadisticas" width="300" />
+  <img src="./assets/resgistrate.png" alt="Mapa Estadisticas" width="300" />
 </p>
 
 ## 🗂 Estructura de Carpetas
