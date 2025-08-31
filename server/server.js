@@ -5,6 +5,7 @@ const pool = require("./database")
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library')
+const nodemailer = require('nodemailer');
 
 var app = express();
 app.use(express.json());
@@ -20,6 +21,79 @@ const signToken = (payload) => jwt.sign(payload, jwtSecret, { expiresIn: "7d" })
 // Google OAuth client (usa el WEB CLIENT ID)
 const googleClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
 
+// ------------------------------------------------------------------
+// SMTP / Email (Gmail o Thundermail)
+// ------------------------------------------------------------------
+const SMTP_PORT_NUM = parseInt(process.env.SMTP_PORT || "587", 10);
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,                 
+    port: SMTP_PORT_NUM,                         
+    secure: SMTP_PORT_NUM === 465,               
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+});
+
+transporter.verify((err) => {
+    if (err) console.error('SMTP verify error:', err);
+    else console.log('SMTP listo para enviar');
+});
+
+async function sendVerificationEmail(to, code) {
+    try {
+        const info = await transporter.sendMail({
+        from: process.env.FROM_EMAIL || process.env.SMTP_USER, // usa tu Gmail si no tienes dominio
+        to,
+        subject: 'Tu código de verificación (DriveSmart)',
+        html: `
+            <div style="font-family:Arial,sans-serif">
+            <h2>Verificación de cuenta</h2>
+            <p>Tu código para terminar el registro es:</p>
+            <div style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</div>
+            <p>Este código expira en 10 minutos.</p>
+            </div>
+        `,
+        });
+        return info;
+    } catch (err) {
+        console.error('sendVerificationEmail error:', err);
+        throw err;
+    }
+}
+
+// ------------------------------------------------------------------
+// OTP helpers y tabla temporal de pre-registro
+// ------------------------------------------------------------------
+const OTP_TTL_MINUTES = 10;
+const MAX_ATTEMPTS = 5;
+const RESEND_LIMIT = 5;
+const gen4 = () => Math.floor(1000 + Math.random() * 9000).toString();
+
+// Crea tabla otp_requests si no existe (guarda datos previos al registro)
+(async () => {
+    try {
+        await pool.query(`
+        CREATE TABLE IF NOT EXISTS otp_requests (
+            email TEXT PRIMARY KEY,
+            nombre_completo TEXT NOT NULL,
+            numberphone TEXT,
+            placa TEXT,
+            password_hash TEXT NOT NULL,
+            otp_code TEXT NOT NULL,
+            otp_expires TIMESTAMP NOT NULL,
+            attempts INT NOT NULL DEFAULT 0,
+            resend_count INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+        `);
+        console.log('Tabla otp_requests lista.');
+    } catch (e) {
+        console.error('Error creando tabla otp_requests:', e);
+    }
+})();
+
+// ========================================================================
+//                          RUTAS DE AUTENTICACIÓN
+// ========================================================================
 
 // /auth/google: valida idToken con Google y usa tu tabla user_mobile
 // - Si existe el email -> emite JWT
@@ -84,6 +158,143 @@ app.post('/auth/google', async (req, res) => {
         return res.status(401).json({ message: 'Token de Google inválido' })
     }
 })
+
+/**
+ * /auth/register/request-otp
+ * Guarda datos del usuario + password hash en otp_requests y envía código al email.
+ * NO crea usuario real todavía.
+ */
+app.post('/auth/register/request-otp', async (req, res) => {
+    try {
+        const { nombre_completo, email, numberphone, placa, password } = req.body;
+        if (!nombre_completo || !email || !password) {
+        return res.status(400).json({ message: 'Faltan campos obligatorios' });
+        }
+
+        const existing = await pool.query('SELECT 1 FROM user_mobile WHERE email = $1', [email]);
+        if (existing.rowCount > 0) {
+        return res.status(409).json({ message: 'El usuario ya existe' });
+        }
+
+        const code = gen4();
+        const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+        const password_hash = await bcrypt.hash(password, 10);
+
+        await pool.query(
+        `INSERT INTO otp_requests (email, nombre_completo, numberphone, placa, password_hash, otp_code, otp_expires, attempts, resend_count)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,0,0)
+        ON CONFLICT (email)
+        DO UPDATE SET
+            nombre_completo=EXCLUDED.nombre_completo,
+            numberphone=EXCLUDED.numberphone,
+            placa=EXCLUDED.placa,
+            password_hash=EXCLUDED.password_hash,
+            otp_code=EXCLUDED.otp_code,
+            otp_expires=EXCLUDED.otp_expires,
+            attempts=0,
+            resend_count=0`,
+        [email, nombre_completo, numberphone, placa, password_hash, code, expiresAt]
+        );
+
+        await sendVerificationEmail(email, code);
+        return res.json({ message: 'Código enviado al correo' });
+    } catch (err) {
+        console.error('request-otp error:', err);
+        return res.status(500).json({ message: 'Error enviando código' });
+    }
+});
+
+/**
+ * /auth/register/verify-otp
+ * Verifica código y, si es correcto, crea el usuario en user_mobile y devuelve JWT.
+ */
+app.post('/auth/register/verify-otp', async (req, res) => {
+    try {
+        const { email, code } = req.body;
+        if (!email || !code) return res.status(400).json({ message: 'Faltan email o código' });
+
+        const existingUser = await pool.query('SELECT * FROM user_mobile WHERE email = $1', [email]);
+        if (existingUser.rowCount > 0) {
+        const token = signToken({ email });
+        const u = existingUser.rows[0];
+        return res.json({
+            token,
+            user: {
+            nombre_completo: u.nombre_completo,
+            email: u.email,
+            numberphone: u.numberphone,
+            placa: u.placa,
+            },
+        });
+        }
+
+        const { rows } = await pool.query('SELECT * FROM otp_requests WHERE email = $1', [email]);
+        if (rows.length === 0) return res.status(400).json({ message: 'No hay solicitud para este correo' });
+
+        const r = rows[0];
+
+        if (r.attempts >= MAX_ATTEMPTS) {
+        return res.status(429).json({ message: 'Demasiados intentos, solicita un nuevo código' });
+        }
+        if (!r.otp_code || !r.otp_expires || new Date(r.otp_expires) < new Date()) {
+        return res.status(400).json({ message: 'Código expirado o inválido' });
+        }
+        if (r.otp_code !== code) {
+        await pool.query('UPDATE otp_requests SET attempts = attempts + 1 WHERE email = $1', [email]);
+        return res.status(400).json({ message: 'Código incorrecto' });
+        }
+
+        const insert = await pool.query(
+        `INSERT INTO user_mobile (nombre_completo, email, numberphone, placa, password)
+        VALUES ($1,$2,$3,$4,$5)
+        RETURNING nombre_completo, email, numberphone, placa`,
+        [r.nombre_completo, email, r.numberphone, r.placa, r.password_hash]
+        );
+
+        await pool.query('DELETE FROM otp_requests WHERE email = $1', [email]);
+
+        const token = signToken({ email });
+        return res.json({ token, user: insert.rows[0] });
+    } catch (err) {
+        console.error('verify-otp error:', err);
+        return res.status(500).json({ message: 'Error verificando código' });
+    }
+});
+
+/**
+ * /auth/register/resend-otp
+ * Reenvía un nuevo código (con límite), resetea attempts.
+ */
+app.post('/auth/register/resend-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ message: 'Falta email' });
+
+        const { rows } = await pool.query('SELECT * FROM otp_requests WHERE email = $1', [email]);
+        if (rows.length === 0) return res.status(400).json({ message: 'No hay solicitud activa para este correo' });
+
+        const r = rows[0];
+        if (r.resend_count >= RESEND_LIMIT) {
+            return res.status(429).json({ message: 'Límite de reenvíos alcanzado' });
+        }
+
+        const newCode = gen4();
+        const newExpires = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+        await pool.query(
+            `UPDATE otp_requests
+            SET otp_code=$1, otp_expires=$2, attempts=0, resend_count=resend_count+1
+            WHERE email=$3`,
+            [newCode, newExpires, email]
+            );
+
+            await sendVerificationEmail(email, newCode);
+            return res.json({ message: 'Código reenviado' });
+    } catch (err) {
+        console.error('resend-otp error:', err);
+        return res.status(500).json({ message: 'Error reenviando código' });
+    }
+});
 
 // Ruta para el registro de usuario
 app.post('/register', async (req, res) => {
