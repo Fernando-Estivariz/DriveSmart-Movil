@@ -15,16 +15,26 @@ import {
     Platform,
 } from "react-native"
 import axios from "axios"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import Config from "react-native-config"
 
 const { width } = Dimensions.get("window")
 
 const EnterCodeScreen = ({ route, navigation }) => {
     const [code, setCode] = useState(["", "", "", ""])
-    const [receivedCode, setReceivedCode] = useState("")
+    //const [receivedCode, setReceivedCode] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const [timeLeft, setTimeLeft] = useState(60) // Timer para reenvío
     const { fullName, email, phoneNumber, plateNumber, password } = route.params
+    const maskEmail = (mail) => {
+        
+        const [user, domain] = mail.split("@")
+        if (!user || !domain) return mail
+        const userMasked = user.length <= 2 ? user[0] + "*" : user.slice(0,2) + "*".repeat(Math.max(1, user.length - 2))
+        const [dom, tld] = domain.split(".")
+        const domMasked = dom.length <= 1 ? dom : dom[0] + "*".repeat(Math.max(1, dom.length - 1))
+        return `${userMasked}@${domMasked}.${tld || ""}`
+    }
 
     // Referencias para cada cuadro de texto
     const inputRefs = useRef([])
@@ -57,12 +67,8 @@ const EnterCodeScreen = ({ route, navigation }) => {
             }),
         ]).start()
 
-        // Simular recepción de una notificación con el código
-        const simulatedCode = "1234"
-        setTimeout(() => {
-            setReceivedCode(simulatedCode)
-            Alert.alert("📱 Código Recibido", `Tu código de verificación es: ${simulatedCode}`)
-        }, 2000)
+        // autofocus primer input
+        setTimeout(() => inputRefs.current[0]?.focus(), 300)
 
         // Timer para reenvío
         const timer = setInterval(() => {
@@ -103,21 +109,22 @@ const EnterCodeScreen = ({ route, navigation }) => {
     }
 
     const handleCodeChange = (value, index) => {
+        const onlyDigit = value.replace(/[^0-9]/g, "")
         const newCode = [...code]
-        newCode[index] = value
+        newCode[index] = onlyDigit
         setCode(newCode)
 
-        if (value) {
+        if (onlyDigit) {
             animateCodeBox(index)
         }
 
         // Mover al siguiente cuadro de texto automáticamente
-        if (value && index < inputRefs.current.length - 1) {
+        if (onlyDigit && index < inputRefs.current.length - 1) {
             inputRefs.current[index + 1].focus()
         }
 
         // Auto-submit cuando se completa el código
-        if (value && index === 3) {
+        if (onlyDigit && index === 3) {
             const fullCode = newCode.join("")
             if (fullCode.length === 4) {
                 setTimeout(() => handleSubmit(fullCode), 500)
@@ -142,43 +149,40 @@ const EnterCodeScreen = ({ route, navigation }) => {
         setIsLoading(true)
         animateButton()
 
-        console.log("Código ingresado:", fullCode)
+        try {
+            // 1) Verificar OTP en backend (aquí tu backend también puede crear el usuario)
+            const verifyRes = await axios.post(
+                `${Config.API_URL}/auth/register/verify-otp`,
+                { email, code: fullCode },
+                { headers: { "Content-Type": "application/json" } },
+            )
 
-        if (fullCode === receivedCode) {
-            try {
-                const response = await axios.post(
+            // 2) Si tu backend aún NO crea al usuario en verify-otp, registra aquí:
+            //    (Si ya lo crea, comenta este bloque)
+            if (verifyRes?.data?.needRegister === true) {
+                await axios.post(
                     `${Config.API_URL}/register`,
                     {
                         nombre_completo: fullName,
-                        email: email,
+                        email,
                         numberphone: phoneNumber,
                         placa: plateNumber,
-                        password: password,
+                        password,
                     },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                    },
+                    { headers: { "Content-Type": "application/json" } },
                 )
-
-                console.log("Respuesta del servidor:", response)
-
-                if (response.status === 200) {
-                    Alert.alert("🎉 ¡Éxito!", "Registro completado exitosamente", [
-                        { text: "Continuar", onPress: () => navigation.navigate("SuccessScreen") },
-                    ])
-                }
-            } catch (error) {
-                console.log("Error al registrar:", error)
-                if (error.response && error.response.status === 409) {
-                    Alert.alert("Error", "El usuario ya existe")
-                } else {
-                    Alert.alert("Error", "Hubo un problema con el registro")
-                }
             }
-        } else {
-            // Shake animation for wrong code
+
+            // 3) Si el backend devuelve token al verificar, lo guardamos
+            if (verifyRes?.data?.token) {
+                await AsyncStorage.setItem("authToken", verifyRes.data.token)
+            }
+
+            Alert.alert("🎉 ¡Éxito!", "Registro completado exitosamente", [
+                { text: "Continuar", onPress: () => navigation.navigate("SuccessScreen") },
+            ])
+        } catch (err) {
+            // Shake animation para error
             Animated.sequence([
                 Animated.timing(slideAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
                 Animated.timing(slideAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
@@ -186,7 +190,8 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 Animated.timing(slideAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
             ]).start()
 
-            Alert.alert("❌ Código Incorrecto", "El código ingresado no es válido", [
+            const msg = err?.response?.data?.message || "Código inválido o expirado"
+            Alert.alert("❌ Código Incorrecto", msg, [
                 {
                     text: "Volver a intentar",
                     onPress: () => {
@@ -199,26 +204,34 @@ const EnterCodeScreen = ({ route, navigation }) => {
                     onPress: () =>
                         navigation.navigate("InvalidCodeScreen", {
                             nombre_completo: fullName,
-                            email: email,
+                            email,
                             numberphone: phoneNumber,
                             placa: plateNumber,
-                            password: password,
+                            password,
                         }),
                 },
             ])
+        } finally {
+            setIsLoading(false)
         }
-
-        setIsLoading(false)
     }
 
-    const handleResendCode = () => {
-        if (timeLeft === 0) {
+    const handleResendCode = async () => {
+        if (timeLeft > 0) return
+        try {
+            await axios.post(
+                `${Config.API_URL}/auth/register/resend-otp`,
+                { email },
+                { headers: { "Content-Type": "application/json" } },
+            )
             setTimeLeft(60)
-            const newCode = "1234" // En producción, esto vendría del servidor
-            setReceivedCode(newCode)
-            Alert.alert("📱 Código Reenviado", `Nuevo código: ${newCode}`)
+            Alert.alert("📩 Código reenviado", "Revisa tu correo")
+        } catch (err) {
+            const msg = err?.response?.data?.message || "No se pudo reenviar el código"
+            Alert.alert("Error", msg)
         }
     }
+
 
     const formatPhoneNumber = (phone) => {
         if (phone.length > 6) {
@@ -245,7 +258,7 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 <Text style={styles.title}>Verificación de Código</Text>
                 <Text style={styles.subtitle}>
                     Hemos enviado un código de 4 dígitos a{"\n"}
-                    <Text style={styles.phoneNumber}>{formatPhoneNumber(phoneNumber)}</Text>
+                    <Text style={styles.phoneNumber}>{maskEmail(email)}</Text>
                 </Text>
 
                 <View style={styles.codeContainer}>

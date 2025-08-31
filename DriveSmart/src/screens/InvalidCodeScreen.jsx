@@ -15,18 +15,29 @@ import {
     Platform,
 } from "react-native"
 import axios from "axios"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import Config from "react-native-config"
 
 const { width } = Dimensions.get("window")
 
 const InvalidCodeScreen = ({ route, navigation }) => {
     const [code, setCode] = useState(["", "", "", ""])
-    const [receivedCode, setReceivedCode] = useState("")
+    //const [receivedCode, setReceivedCode] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const [timeLeft, setTimeLeft] = useState(60)
     const [attempts, setAttempts] = useState(0)
     const [error, setError] = useState("")
     const { nombre_completo, email, numberphone, placa, password } = route.params
+    const maskEmail = (mail) => {
+        
+        const [user, domain] = mail.split("@")
+        if (!user || !domain) return mail
+        const userMasked = user.length <= 2 ? user[0] + "*" : user.slice(0,2) + "*".repeat(Math.max(1, user.length - 2))
+        const [dom, tld] = domain.split(".")
+        const domMasked = dom.length <= 1 ? dom : dom[0] + "*".repeat(Math.max(1, dom.length - 1))
+        return `${userMasked}@${domMasked}.${tld || ""}`
+    }
+
 
     // Referencias para cada cuadro de texto
     const inputRefs = useRef([])
@@ -60,12 +71,8 @@ const InvalidCodeScreen = ({ route, navigation }) => {
             }),
         ]).start()
 
-        // Simular recepción de código
-        const simulatedCode = "5678"
-        setTimeout(() => {
-            setReceivedCode(simulatedCode)
-            Alert.alert("📱 Nuevo Código", `Tu código de verificación es: ${simulatedCode}`)
-        }, 2000)
+        // autofocus primer input
+        setTimeout(() => inputRefs.current[0]?.focus(), 300);
 
         // Timer para reenvío
         const timer = setInterval(() => {
@@ -115,11 +122,12 @@ const InvalidCodeScreen = ({ route, navigation }) => {
     }
 
     const handleCodeChange = (value, index) => {
+        const onlyDigit = value.replace(/[^0-9]/g, "")
         const newCode = [...code]
-        newCode[index] = value
+        newCode[index] = onlyDigit
         setCode(newCode)
 
-        if (value) {
+        if (onlyDigit) {
             animateCodeBox(index)
         }
 
@@ -129,12 +137,12 @@ const InvalidCodeScreen = ({ route, navigation }) => {
         }
 
         // Mover al siguiente cuadro de texto automáticamente
-        if (value && index < inputRefs.current.length - 1) {
+        if (onlyDigit && index < inputRefs.current.length - 1) {
             inputRefs.current[index + 1].focus()
         }
 
         // Auto-submit cuando se completa el código
-        if (value && index === 3) {
+        if (onlyDigit && index === 3) {
             const fullCode = newCode.join("")
             if (fullCode.length === 4) {
                 setTimeout(() => handleSubmit(fullCode), 500)
@@ -160,73 +168,74 @@ const InvalidCodeScreen = ({ route, navigation }) => {
         setIsLoading(true)
         animateButton()
 
-        if (fullCode === receivedCode) {
-            try {
-                const response = await axios.post(
-                    `${Config.API_URL}/register`,
-                    {
-                        nombre_completo: nombre_completo,
-                        email: email,
-                        numberphone: numberphone,
-                        placa: placa,
-                        password: password,
-                    },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                    },
-                )
+        try {
+            const { data, status } = await axios.post(
+                `${Config.API_URL}/auth/register/verify-otp`,
+                { email, code: fullCode },
+                { headers: { "Content-Type": "application/json" } },
+            )
 
-                if (response.status === 200) {
-                    Alert.alert("🎉 ¡Éxito!", "Registro completado exitosamente", [
-                        { text: "Continuar", onPress: () => navigation.navigate("SuccessScreen") },
-                    ])
-                }
-            } catch (error) {
-                console.log("Error al registrar:", error)
-                if (error.response && error.response.status === 409) {
-                    setError("El usuario ya existe")
-                } else {
-                    setError("Hubo un problema con el registro")
-                }
+            if (status === 200 && data?.token) {
+                await AsyncStorage.setItem("authToken", data.token)
+                Alert.alert("🎉 ¡Éxito!", "Registro completado exitosamente", [
+                    { text: "Continuar", onPress: () => navigation.navigate("SuccessScreen") },
+                ])
+            } else {
+                setError(data?.message || "No se pudo verificar el código")
                 animateError()
             }
-        } else {
-            setAttempts(attempts + 1)
-            setError(`Código incorrecto (${attempts + 1}/3 intentos)`)
+        } catch (err) {
+            const msg = err?.response?.data?.message || "Código inválido o expirado"
+            setError(msg)
             animateError()
 
-            // Limpiar código después de error
+            setAttempts((prev) => {
+                const next = prev + 1
+                if (next >= 3) {
+                    Alert.alert(
+                        "❌ Demasiados Intentos",
+                        "Has excedido el número máximo de intentos. Solicita un nuevo código.",
+                        [
+                            {
+                                text: "Solicitar nuevo código",
+                                onPress: () =>
+                                    navigation.navigate("EnterCodeScreen", {
+                                        nombre_completo: fullName,
+                                        email,
+                                        numberphone: phoneNumber,
+                                        placa: plateNumber,
+                                        password,
+                                    }),
+                            },
+                        ],
+                    )
+                }
+                return next
+            })
+
             setCode(["", "", "", ""])
             inputRefs.current[0]?.focus()
-
-            // Bloquear después de 3 intentos
-            if (attempts >= 2) {
-                Alert.alert(
-                    "❌ Demasiados Intentos",
-                    "Has excedido el número máximo de intentos. Por favor, solicita un nuevo código.",
-                    [
-                        {
-                            text: "Solicitar Nuevo Código",
-                            onPress: () => navigation.navigate("EnterCodeScreen", route.params),
-                        },
-                    ],
-                )
-            }
+        } finally {
+            setIsLoading(false)
         }
-
-        setIsLoading(false)
     }
 
-    const handleResendCode = () => {
-        if (timeLeft === 0) {
+    const handleResendCode = async () => {
+        if (timeLeft > 0) return
+        try {
+            await axios.post(
+                `${Config.API_URL}/auth/register/resend-otp`,
+                { email },
+                { headers: { "Content-Type": "application/json" } },
+            )
             setTimeLeft(60)
             setAttempts(0)
             setError("")
-            const newCode = "5678" // En producción, esto vendría del servidor
-            setReceivedCode(newCode)
-            Alert.alert("📱 Código Reenviado", `Nuevo código: ${newCode}`)
+            Alert.alert("📩 Código reenviado", "Revisa tu correo")
+        } catch (err) {
+            const msg = err?.response?.data?.message || "No se pudo reenviar el código"
+            setError(msg)
+            animateError()
         }
     }
 
@@ -256,7 +265,7 @@ const InvalidCodeScreen = ({ route, navigation }) => {
                     <Text style={styles.title}>⚠️ Código Incorrecto</Text>
                     <Text style={styles.subtitle}>
                         Ingresa el nuevo código enviado a{"\n"}
-                        <Text style={styles.phoneNumber}>{formatPhoneNumber(numberphone)}</Text>
+                        <Text style={styles.phoneNumber}>{maskEmail(email)}</Text>
                     </Text>
                 </View>
 

@@ -15,6 +15,8 @@ import {
     Platform,
     ScrollView,
 } from "react-native"
+import axios from "axios"
+import Config from "react-native-config"
 import CountryPicker from "../components/CountryPicker"
 
 const { width } = Dimensions.get("window")
@@ -82,7 +84,7 @@ const RegisterScreen = ({ navigation }) => {
         return plateRegex.test(plate)
     }
 
-    const handleRegister = () => {
+    const handleRegister = async () => {
         // Validación de campos vacíos
         if (!fullName || !email || !phoneNumber || !plateNumber || !password || !confirmPassword) {
             Alert.alert("Error", "Por favor, completa todos los campos")
@@ -119,9 +121,19 @@ const RegisterScreen = ({ navigation }) => {
         // Preparación del número de teléfono
         const sanitizedPhoneNumber = `${countryCode}${phoneNumber}`.replace("+", "")
 
-        // Simular delay de procesamiento
-        setTimeout(() => {
-            setIsLoading(false)
+        try {
+            await axios.post(
+                `${Config.API_URL}/auth/register/request-otp`,
+                {
+                    nombre_completo: fullName,
+                    email,
+                    numberphone: sanitizedPhoneNumber,
+                    placa: plateNumber,
+                    password,
+                },
+                { headers: { "Content-Type": "application/json" } },
+            )
+
             navigation.navigate("EnterCodeScreen", {
                 fullName,
                 email,
@@ -129,8 +141,14 @@ const RegisterScreen = ({ navigation }) => {
                 plateNumber,
                 password,
             })
-        }, 1000)
+        } catch (err) {
+            const msg = err?.response?.data?.message || "Error solicitando el código"
+            Alert.alert("Error", msg)
+        } finally {
+            setIsLoading(false)
+        }
     }
+
 
     const handleCountrySelect = (code) => {
         setCountryCode(code)
