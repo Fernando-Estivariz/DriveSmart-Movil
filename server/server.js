@@ -1,8 +1,10 @@
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const pool = require("./database")
-const bcrypt = require('bcryptjs'); 
-const jwt = require('jsonwebtoken'); 
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library')
 
 var app = express();
 app.use(express.json());
@@ -12,35 +14,77 @@ app.use(cors({
 
 const PORT = process.env.PORT || 3000;
 
-// Clave secreta para generar JWT
-const jwtSecret = 'secreto_del_token';
-// Clave para cuenta google
-/*const { OAuth2Client } = require('google-auth-library');
-const client = new OAuth2Client('TU_CLIENT_ID_DE_WEB'); // Reemplaza con tu ID
-//Ruta inicio con cuenta google
-app.post('/google-login', async (req, res) => {
-    const { token } = req.body;
-    try {
-        const ticket = await client.verifyIdToken({
-            idToken: token,
-            audience: 'TU_CLIENT_ID_DE_WEB',
-        });
-        const payload = ticket.getPayload();
-        const email = payload.email;
+const jwtSecret = process.env.JWT_SECRET || "secreto_del_token";
+const signToken = (payload) => jwt.sign(payload, jwtSecret, { expiresIn: "7d" });
 
-        // Verificar si el correo está en la base de datos
-        const user = await User.findOne({ where: { email } });
-        if (user) {
-            const authToken = generarToken(user); // Función para generar tu token JWT
-            res.status(200).json({ isRegistered: true, token: authToken });
-        } else {
-            res.status(200).json({ isRegistered: false });
+// Google OAuth client (usa el WEB CLIENT ID)
+const googleClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
+
+
+// /auth/google: valida idToken con Google y usa tu tabla user_mobile
+// - Si existe el email -> emite JWT
+// - Si no existe:
+//    * modo estricto: responde 403
+//    * modo auto-crear: inserta fila mínima y devuelve JWT
+app.post('/auth/google', async (req, res) => {
+    try {
+        const { idToken, allowCreate = false } = req.body
+        if (!idToken) return res.status(400).json({ message: 'Falta idToken' })
+
+        // 1) Verificar token con Google
+        const ticket = await googleClient.verifyIdToken({
+            idToken,
+            audience: process.env.GOOGLE_WEB_CLIENT_ID,
+        })
+        const payload = ticket.getPayload() // { email, email_verified, name, picture, sub, ... }
+
+        if (!payload?.email || !payload?.email_verified) {
+            return res.status(401).json({ message: 'Email de Google no verificado' })
         }
-    } catch (error) {
-        res.status(400).json({ error: 'Error al verificar el token de Google' });
+
+        const email = payload.email
+
+        // 2) Buscar en tu BD
+        const existing = await pool.query('SELECT * FROM user_mobile WHERE email = $1', [email])
+        let user = existing.rows[0]
+
+        // 3) Si no existe
+        if (!user) {
+            if (!allowCreate) {
+                return res.status(403).json({ message: 'Usuario no registrado' })
+            }
+            // Auto-crear con datos disponibles
+            const randomPwd = Math.random().toString(36).slice(2) // no se usará para login
+            const hashed = await bcrypt.hash(randomPwd, 10)
+
+            const nombre = payload.name || null
+            const numberphone = null
+            const placa = null
+
+            const insert = await pool.query(
+                'INSERT INTO user_mobile (nombre_completo, email, numberphone, placa, password) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+                [nombre, email, numberphone, placa, hashed]
+            )
+            user = insert.rows[0]
+        }
+
+        // 4) Emite tu JWT
+        const token = signToken({ email: user.email })
+        return res.json({
+            token,
+            user: {
+                nombre_completo: user.nombre_completo,
+                email: user.email,
+                numberphone: user.numberphone,
+                placa: user.placa,
+            },
+        })
+    } catch (err) {
+        console.error('Google Auth error:', err)
+        return res.status(401).json({ message: 'Token de Google inválido' })
     }
-});
-*/
+})
+
 // Ruta para el registro de usuario
 app.post('/register', async (req, res) => {
     const { nombre_completo, email, numberphone, placa, password } = req.body;
@@ -181,7 +225,7 @@ app.get('/mapeado', async (req, res) => {
             } else {
                 latlngs = JSON.parse(row.geometry).coordinates[0].map(coord => [coord[1], coord[0]]);
             }
-            if(row.type === 'marker'){
+            if (row.type === 'marker') {
                 latlngs = JSON.parse(row.geometry).coordinates;
             }
             return {
