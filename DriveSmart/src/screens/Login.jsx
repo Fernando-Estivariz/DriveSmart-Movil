@@ -21,6 +21,17 @@ import Config from "react-native-config"
 
 const { width } = Dimensions.get("window")
 
+// --- Cliente axios con baseURL y token automático en headers
+const api = axios.create({
+    baseURL: Config.API_URL,
+    headers: { "Content-Type": "application/json" },
+})
+api.interceptors.request.use(async (cfg) => {
+    const tk = await AsyncStorage.getItem("authToken")
+    if (tk) cfg.headers.Authorization = `Bearer ${tk}`
+    return cfg
+})
+
 const LoginScreen = ({ navigation }) => {
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
@@ -35,8 +46,11 @@ const LoginScreen = ({ navigation }) => {
 
     // Configuración de Google Sign-In
     useEffect(() => {
+        
         GoogleSignin.configure({
-            webClientId: "TU_CLIENT_ID_DE_WEB",
+            webClientId: Config.GOOGLE_WEB_CLIENT_ID,
+            scopes: ['openid', 'email', 'profile'],
+            offlineAccess: false,
         })
 
         // Animación de entrada
@@ -58,7 +72,13 @@ const LoginScreen = ({ navigation }) => {
                 useNativeDriver: true,
             }),
         ]).start()
+
+            ; (async () => {
+                const token = await AsyncStorage.getItem("authToken")
+                if (token) navigation.replace("Home")
+            })()
     }, [])
+
 
     const animateButton = (scaleRef) => {
         Animated.sequence([
@@ -106,32 +126,60 @@ const LoginScreen = ({ navigation }) => {
         }
     }
 
+    // --- Login con Google (valida que el email exista en la BD)
     const handleGoogleSignIn = async () => {
         animateButton(googleButtonScale)
-
         try {
-            await GoogleSignin.hasPlayServices()
-            const userInfo = await GoogleSignin.signIn()
-            const googleToken = userInfo.idToken
+            await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
 
-            const response = await axios.post(
-                `${Config.API_URL}/google-login`,
-                { token: googleToken },
-                { headers: { "Content-Type": "application/json" } },
-            )
+            // Opcional la primera vez para “resetear” cualquier sesión
+            await GoogleSignin.signOut().catch(() => { })
+            await GoogleSignin.revokeAccess().catch(() => { })
 
-            if (response.status === 200) {
-                await AsyncStorage.setItem("authToken", response.data.token)
-                navigation.navigate("Home")
+            const info = await GoogleSignin.signIn()
+            // NO toques info.idToken; usa una variable nueva
+            let tokenFromGoogle = info?.idToken
+
+            // Fallback: si no vino en signIn(), pide los tokens
+            if (!tokenFromGoogle) {
+                const tokens = await GoogleSignin.getTokens() // { idToken, accessToken }
+                tokenFromGoogle = tokens?.idToken
+            }
+
+            if (!tokenFromGoogle) {
+                
+                const tokens = await GoogleSignin.getTokens().catch(() => null)
+                
+                Alert.alert("Error", "No se obtuvo el idToken de Google")
+                return
+            }
+
+            // Enviar al backend
+            const { data, status } = await api.post("/auth/google", {
+                idToken: tokenFromGoogle,
+                allowCreate: false,
+            })
+
+            if (status === 200 && data?.token) {
+                await AsyncStorage.setItem("authToken", data.token)
+                navigation.replace("Home")
+            } else {
+                Alert.alert("Error", data?.message || "No autorizado")
             }
         } catch (error) {
-            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+            
+            if (error?.code === statusCodes.SIGN_IN_CANCELLED) {
                 Alert.alert("Cancelado", "Inicio de sesión cancelado")
+            } else if (error?.code === statusCodes.IN_PROGRESS) {
+                Alert.alert("En curso", "La autenticación ya está en progreso")
+            } else if (error?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                Alert.alert("Error", "Google Play Services no está disponible/actualizado")
             } else {
-                Alert.alert("Error", "No se pudo iniciar sesión con Google")
+                Alert.alert("Error", error?.code || error?.message || "No se pudo iniciar sesión con Google")
             }
         }
     }
+
 
     return (
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>

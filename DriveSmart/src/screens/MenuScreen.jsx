@@ -14,6 +14,9 @@ import {
     ScrollView,
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import { GoogleSignin } from "@react-native-google-signin/google-signin"
+
 
 const { width, height } = Dimensions.get("window")
 
@@ -136,7 +139,22 @@ const MenuScreen = ({ navigation }) => {
     }
 
     const handleLogout = () => {
-        animatePress(() => navigation.navigate("LogingScreen"))
+        animatePress(async () => {
+            try {
+                // Revocar + cerrar sesión de Google
+                await GoogleSignin.revokeAccess().catch(() => { })
+                await GoogleSignin.signOut().catch(() => { })
+            } finally {
+                // Borrar token local
+                await AsyncStorage.removeItem("authToken")
+
+                // Resetear navegación
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: "LogingScreen" }], 
+                })
+            }
+        })
     }
 
     const renderMenuItem = (item, index) => (
