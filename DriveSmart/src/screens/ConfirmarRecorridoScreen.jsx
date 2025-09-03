@@ -30,7 +30,7 @@ const hp = (percentage) => (height * percentage) / 100
 const ConfirmarRecorridoScreen = () => {
     const route = useRoute()
     const navigation = useNavigation()
-    const { destinationLocation } = route.params
+    const { destinationLocation } = route.params || {}
 
     const [origin, setOrigin] = useState(null)
     const [region, setRegion] = useState(null)
@@ -50,6 +50,10 @@ const ConfirmarRecorridoScreen = () => {
     // Función para obtener dirección desde coordenadas
     const getAddressFromCoordinates = async (latitude, longitude) => {
         try {
+            if (!latitude || !longitude) {
+                return "Coordenadas no válidas"
+            }
+
             const response = await fetch(
                 `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_MAPS_APIKEY}&language=es`,
             )
@@ -57,21 +61,21 @@ const ConfirmarRecorridoScreen = () => {
 
             if (data.results && data.results.length > 0) {
                 const result = data.results[0]
-                const addressComponents = result.address_components
+                const addressComponents = result.address_components || []
 
                 let streetNumber = ""
                 let route = ""
                 let locality = ""
 
                 addressComponents.forEach((component) => {
-                    if (component.types.includes("street_number")) {
-                        streetNumber = component.long_name
+                    if (component.types && component.types.includes("street_number")) {
+                        streetNumber = component.long_name || ""
                     }
-                    if (component.types.includes("route")) {
-                        route = component.long_name
+                    if (component.types && component.types.includes("route")) {
+                        route = component.long_name || ""
                     }
-                    if (component.types.includes("locality")) {
-                        locality = component.long_name
+                    if (component.types && component.types.includes("locality")) {
+                        locality = component.long_name || ""
                     }
                 })
 
@@ -85,7 +89,7 @@ const ConfirmarRecorridoScreen = () => {
                         address += `, ${locality}`
                     }
                 } else {
-                    address = result.formatted_address
+                    address = result.formatted_address || "Dirección no disponible"
                 }
 
                 return address
@@ -99,6 +103,12 @@ const ConfirmarRecorridoScreen = () => {
     }
 
     useEffect(() => {
+        if (!destinationLocation) {
+            Alert.alert("Error", "No se recibió información del destino")
+            navigation.goBack()
+            return
+        }
+
         // Obtener la ubicación actual del usuario
         Geolocation.getCurrentPosition(
             async (position) => {
@@ -114,8 +124,12 @@ const ConfirmarRecorridoScreen = () => {
                 })
 
                 // Obtener dirección del origen
-                const originAddr = await getAddressFromCoordinates(latitude, longitude)
-                setOriginAddress(originAddr)
+                try {
+                    const originAddr = await getAddressFromCoordinates(latitude, longitude)
+                    setOriginAddress(originAddr || "Ubicación actual")
+                } catch (error) {
+                    setOriginAddress("Error al obtener ubicación")
+                }
 
                 // Animaciones de entrada
                 Animated.parallel([
@@ -140,22 +154,29 @@ const ConfirmarRecorridoScreen = () => {
             (error) => {
                 console.log(error)
                 setOriginAddress("Error al obtener ubicación")
+                setLoadingRoute(false)
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
         )
 
         // Obtener dirección del destino si ya viene con address, sino calcularla
         const getDestinationAddress = async () => {
-            if (destinationLocation.address) {
-                setDestinationAddress(destinationLocation.address)
-            } else {
-                const destAddr = await getAddressFromCoordinates(destinationLocation.latitude, destinationLocation.longitude)
-                setDestinationAddress(destAddr)
+            try {
+                if (destinationLocation?.address) {
+                    setDestinationAddress(destinationLocation.address)
+                } else if (destinationLocation?.latitude && destinationLocation?.longitude) {
+                    const destAddr = await getAddressFromCoordinates(destinationLocation.latitude, destinationLocation.longitude)
+                    setDestinationAddress(destAddr || "Destino")
+                } else {
+                    setDestinationAddress("Destino no válido")
+                }
+            } catch (error) {
+                setDestinationAddress("Error al obtener destino")
             }
         }
 
         getDestinationAddress()
-    }, [])
+    }, [destinationLocation, navigation])
 
     const animateButton = (callback) => {
         Animated.sequence([
@@ -170,7 +191,7 @@ const ConfirmarRecorridoScreen = () => {
                 useNativeDriver: true,
             }),
         ]).start()
-        callback && callback()
+        if (callback) callback()
     }
 
     const handleCancel = () => {
@@ -184,17 +205,34 @@ const ConfirmarRecorridoScreen = () => {
     const handleStart = () => {
         if (loadingRoute) {
             Alert.alert("Calculando ruta", "Por favor, espere a que se calcule la ruta.")
-        } else if (routeDetails.length > 0) {
-            animateButton(() => {
-                navigation.navigate("NavegacionScreen", {
-                    origin, // Coordenadas exactas
-                    destinationLocation, // Coordenadas exactas + dirección
-                    routeDetails,
-                })
-            })
-        } else {
-            Alert.alert("Error", "No se pudo calcular la ruta.")
+            return
         }
+
+        if (!origin || !destinationLocation) {
+            Alert.alert("Error", "Faltan datos de ubicación.")
+            return
+        }
+
+        // Permitir navegación incluso si no hay routeDetails (para misma ubicación)
+        animateButton(() => {
+            navigation.navigate("NavegacionScreen", {
+                origin,
+                destinationLocation,
+                routeDetails: routeDetails || [],
+            })
+        })
+    }
+
+    // Validar que tenemos los datos necesarios
+    if (!destinationLocation) {
+        return (
+            <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+                <Text style={styles.errorText}>Error: No se recibió información del destino</Text>
+                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                    <Text style={styles.backButtonText}>Volver</Text>
+                </TouchableOpacity>
+            </View>
+        )
     }
 
     return (
@@ -205,12 +243,24 @@ const ConfirmarRecorridoScreen = () => {
             <MapView style={styles.map} region={region} showsUserLocation={true} loadingEnabled={true}>
                 {origin && <Marker coordinate={origin} title="Ubicación Actual" pinColor="blue" />}
 
-                {destinationLocation && <Marker coordinate={destinationLocation} title="Destino" pinColor="red" />}
+                {destinationLocation && (
+                    <Marker
+                        coordinate={{
+                            latitude: destinationLocation.latitude || 0,
+                            longitude: destinationLocation.longitude || 0,
+                        }}
+                        title="Destino"
+                        pinColor="red"
+                    />
+                )}
 
-                {origin && destinationLocation && (
+                {origin && destinationLocation && destinationLocation.latitude && destinationLocation.longitude && (
                     <MapViewDirections
                         origin={origin}
-                        destination={destinationLocation}
+                        destination={{
+                            latitude: destinationLocation.latitude,
+                            longitude: destinationLocation.longitude,
+                        }}
                         apikey={Config.GOOGLE_MAPS_APIKEY}
                         strokeWidth={5}
                         strokeColor="#FF6B35"
@@ -218,13 +268,19 @@ const ConfirmarRecorridoScreen = () => {
                             setLoadingRoute(true)
                         }}
                         onReady={(result) => {
-                            setDistance(result.distance)
-                            setDuration(result.duration)
-                            setRouteDetails(result.legs[0].steps)
+                            if (result) {
+                                setDistance(result.distance || 0)
+                                setDuration(result.duration || 0)
+                                setRouteDetails((result.legs && result.legs[0] && result.legs[0].steps) || [])
+                            }
                             setLoadingRoute(false)
                         }}
                         onError={(errorMessage) => {
                             console.log("Error en la dirección: ", errorMessage)
+                            // Para misma ubicación, no es realmente un error
+                            setDistance(0)
+                            setDuration(0)
+                            setRouteDetails([])
                             setLoadingRoute(false)
                         }}
                     />
@@ -273,7 +329,7 @@ const ConfirmarRecorridoScreen = () => {
                         <View style={styles.locationDetails}>
                             <Text style={styles.locationLabel}>Punto de Inicio</Text>
                             <Text style={styles.locationAddress} numberOfLines={2}>
-                                {originAddress}
+                                {originAddress || "Obteniendo ubicación..."}
                             </Text>
                         </View>
                     </View>
@@ -291,23 +347,23 @@ const ConfirmarRecorridoScreen = () => {
                         <View style={styles.locationDetails}>
                             <Text style={styles.locationLabel}>Punto de Llegada</Text>
                             <Text style={styles.locationAddress} numberOfLines={2}>
-                                {destinationAddress}
+                                {destinationAddress || "Cargando destino..."}
                             </Text>
                         </View>
                     </View>
 
                     {/* Información de ruta */}
-                    {distance && duration && (
+                    {distance !== null && duration !== null && (
                         <View style={styles.routeStats}>
                             <View style={styles.statItem}>
                                 <Icon name="straighten" size={wp(4)} color="#FF6B35" />
                                 <Text style={styles.statLabel}>Distancia</Text>
-                                <Text style={styles.statValue}>{distance.toFixed(1)} km</Text>
+                                <Text style={styles.statValue}>{distance === 0 ? "0 m" : `${(distance || 0).toFixed(1)} km`}</Text>
                             </View>
                             <View style={styles.statItem}>
                                 <Icon name="schedule" size={wp(4)} color="#FF6B35" />
                                 <Text style={styles.statLabel}>Tiempo</Text>
-                                <Text style={styles.statValue}>{Math.ceil(duration)} min</Text>
+                                <Text style={styles.statValue}>{duration === 0 ? "0 min" : `${Math.ceil(duration || 0)} min`}</Text>
                             </View>
                         </View>
                     )}
@@ -554,6 +610,23 @@ const styles = StyleSheet.create({
         fontSize: wp(3.8),
         fontWeight: "bold",
         marginLeft: wp(1),
+    },
+    errorText: {
+        fontSize: wp(4),
+        color: "#E74C3C",
+        textAlign: "center",
+        marginBottom: hp(2),
+    },
+    backButton: {
+        backgroundColor: "#FF6B35",
+        paddingHorizontal: wp(6),
+        paddingVertical: hp(1.5),
+        borderRadius: wp(3),
+    },
+    backButtonText: {
+        color: "#FFFFFF",
+        fontSize: wp(4),
+        fontWeight: "bold",
     },
 })
 

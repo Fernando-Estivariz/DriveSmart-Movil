@@ -16,7 +16,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import MapView from "react-native-maps"
 import Geolocation from "@react-native-community/geolocation"
 import { useNavigation } from "@react-navigation/native"
-import Config from "react-native-config"
+
 const { width, height } = Dimensions.get("window")
 
 // Responsive helper functions
@@ -27,11 +27,12 @@ const SeleccionarUbicacionScreen = () => {
     const navigation = useNavigation()
     const [region, setRegion] = useState(null)
     const [markerPosition, setMarkerPosition] = useState(null)
+    const [streetAddress, setStreetAddress] = useState("Cargando dirección...")
     const [isLoading, setIsLoading] = useState(true)
     const [isDragging, setIsDragging] = useState(false)
-    const [streetAddress, setStreetAddress] = useState("Cargando dirección...")
 
-
+    // API Key de Google
+    const GOOGLE_GEOCODING_API_KEY = "AIzaSyCnYj53uccNgCSYv_3TEqaIrF3wGX039aM"
 
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
@@ -44,7 +45,7 @@ const SeleccionarUbicacionScreen = () => {
     const getAddressFromCoordinates = async (latitude, longitude) => {
         try {
             const response = await fetch(
-                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_GEOCODING_API_KEY}&language=es`,
+                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_GEOCODING_API_KEY}&language=es`,
             )
             const data = await response.json()
 
@@ -84,7 +85,7 @@ const SeleccionarUbicacionScreen = () => {
                     address = result.formatted_address
                 }
 
-                return address
+                return address || "Dirección no disponible"
             } else {
                 return "Dirección no disponible"
             }
@@ -198,10 +199,18 @@ const SeleccionarUbicacionScreen = () => {
             navigation.navigate("ConfirmarRecorridoScreen", {
                 destinationLocation: {
                     ...markerPosition,
-                    address: streetAddress,
+                    address: streetAddress || "Destino seleccionado",
                 },
             })
         }
+    }
+
+    const isButtonEnabled = () => {
+        return markerPosition !== null
+    }
+
+    const getButtonText = () => {
+        return "Confirmar Ubicación"
     }
 
     const handleMyLocation = () => {
@@ -327,7 +336,7 @@ const SeleccionarUbicacionScreen = () => {
                     <View style={styles.locationTextContainer}>
                         <Text style={styles.locationTitle}>Ubicación seleccionada</Text>
                         <Text style={styles.locationAddress} numberOfLines={2}>
-                            {streetAddress}
+                            {streetAddress || "Cargando dirección..."}
                         </Text>
                     </View>
                 </View>
@@ -335,13 +344,13 @@ const SeleccionarUbicacionScreen = () => {
                 {/* Botón de confirmar */}
                 <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
                     <TouchableOpacity
-                        style={[styles.readyButton, !markerPosition && styles.readyButtonDisabled]}
+                        style={[styles.readyButton, !isButtonEnabled() && styles.readyButtonDisabled]}
                         onPress={handleReady}
-                        disabled={!markerPosition}
+                        disabled={!isButtonEnabled()}
                         activeOpacity={0.8}
                     >
                         <Icon name="check-circle" size={wp(5)} color="#FFFFFF" />
-                        <Text style={styles.readyButtonText}>Confirmar Ubicación</Text>
+                        <Text style={styles.readyButtonText}>{getButtonText()}</Text>
                     </TouchableOpacity>
                 </Animated.View>
             </Animated.View>

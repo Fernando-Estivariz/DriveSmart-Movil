@@ -8,11 +8,11 @@ import {
     TouchableOpacity,
     StyleSheet,
     Image,
-    Alert,
     Animated,
     Dimensions,
     KeyboardAvoidingView,
     Platform,
+    Modal,
 } from "react-native"
 import axios from "axios"
 import AsyncStorage from "@react-native-async-storage/async-storage"
@@ -22,15 +22,23 @@ const { width } = Dimensions.get("window")
 
 const EnterCodeScreen = ({ route, navigation }) => {
     const [code, setCode] = useState(["", "", "", ""])
-    //const [receivedCode, setReceivedCode] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [timeLeft, setTimeLeft] = useState(60) // Timer para reenvío
+    const [timeLeft, setTimeLeft] = useState(60)
     const { fullName, email, phoneNumber, plateNumber, password } = route.params
+
+    // Estados para modales
+    const [showModal, setShowModal] = useState(false)
+    const [modalConfig, setModalConfig] = useState({
+        type: "error", // 'error', 'success', 'info'
+        title: "",
+        message: "",
+        buttons: [],
+    })
+
     const maskEmail = (mail) => {
-        
         const [user, domain] = mail.split("@")
         if (!user || !domain) return mail
-        const userMasked = user.length <= 2 ? user[0] + "*" : user.slice(0,2) + "*".repeat(Math.max(1, user.length - 2))
+        const userMasked = user.length <= 2 ? user[0] + "*" : user.slice(0, 2) + "*".repeat(Math.max(1, user.length - 2))
         const [dom, tld] = domain.split(".")
         const domMasked = dom.length <= 1 ? dom : dom[0] + "*".repeat(Math.max(1, dom.length - 1))
         return `${userMasked}@${domMasked}.${tld || ""}`
@@ -45,6 +53,8 @@ const EnterCodeScreen = ({ route, navigation }) => {
     const logoScale = useRef(new Animated.Value(0.8)).current
     const buttonScale = useRef(new Animated.Value(1)).current
     const codeBoxAnimations = useRef(code.map(() => new Animated.Value(1))).current
+    const modalAnim = useRef(new Animated.Value(0)).current
+    const modalSlideAnim = useRef(new Animated.Value(50)).current
 
     useEffect(() => {
         // Animación de entrada
@@ -77,6 +87,45 @@ const EnterCodeScreen = ({ route, navigation }) => {
 
         return () => clearInterval(timer)
     }, [])
+
+    // Función para mostrar modal personalizado
+    const showCustomModal = (type, title, message, buttons = []) => {
+        setModalConfig({ type, title, message, buttons })
+        setShowModal(true)
+
+        // Animación del modal
+        Animated.parallel([
+            Animated.timing(modalAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.spring(modalSlideAnim, {
+                toValue: 0,
+                tension: 50,
+                friction: 8,
+                useNativeDriver: true,
+            }),
+        ]).start()
+    }
+
+    const hideModal = () => {
+        Animated.parallel([
+            Animated.timing(modalAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(modalSlideAnim, {
+                toValue: 50,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setShowModal(false)
+            setModalConfig({ type: "error", title: "", message: "", buttons: [] })
+        })
+    }
 
     const animateCodeBox = (index) => {
         Animated.sequence([
@@ -142,7 +191,15 @@ const EnterCodeScreen = ({ route, navigation }) => {
         const fullCode = autoCode || code.join("")
 
         if (fullCode.length !== 4) {
-            Alert.alert("Error", "Por favor ingresa el código completo")
+            showCustomModal("error", "Código Incompleto", "Por favor ingresa el código completo de 4 dígitos.", [
+                {
+                    text: "Entendido",
+                    onPress: () => {
+                        hideModal()
+                        inputRefs.current[0]?.focus()
+                    },
+                },
+            ])
             return
         }
 
@@ -150,7 +207,7 @@ const EnterCodeScreen = ({ route, navigation }) => {
         animateButton()
 
         try {
-            // 1) Verificar OTP en backend (aquí tu backend también puede crear el usuario)
+            // 1) Verificar OTP en backend
             const verifyRes = await axios.post(
                 `${Config.API_URL}/auth/register/verify-otp`,
                 { email, code: fullCode },
@@ -158,7 +215,6 @@ const EnterCodeScreen = ({ route, navigation }) => {
             )
 
             // 2) Si tu backend aún NO crea al usuario en verify-otp, registra aquí:
-            //    (Si ya lo crea, comenta este bloque)
             if (verifyRes?.data?.needRegister === true) {
                 await axios.post(
                     `${Config.API_URL}/register`,
@@ -178,9 +234,20 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 await AsyncStorage.setItem("authToken", verifyRes.data.token)
             }
 
-            Alert.alert("🎉 ¡Éxito!", "Registro completado exitosamente", [
-                { text: "Continuar", onPress: () => navigation.navigate("SuccessScreen") },
-            ])
+            showCustomModal(
+                "success",
+                "🎉 ¡Registro Exitoso!",
+                "Tu cuenta ha sido verificada y creada exitosamente. ¡Bienvenido a DriveSmart!",
+                [
+                    {
+                        text: "Continuar",
+                        onPress: () => {
+                            hideModal()
+                            navigation.navigate("SuccessScreen")
+                        },
+                    },
+                ],
+            )
         } catch (err) {
             // Shake animation para error
             Animated.sequence([
@@ -191,24 +258,14 @@ const EnterCodeScreen = ({ route, navigation }) => {
             ]).start()
 
             const msg = err?.response?.data?.message || "Código inválido o expirado"
-            Alert.alert("❌ Código Incorrecto", msg, [
+            showCustomModal("error", "Código Incorrecto", msg, [
                 {
                     text: "Volver a intentar",
                     onPress: () => {
+                        hideModal()
                         setCode(["", "", "", ""])
                         inputRefs.current[0]?.focus()
                     },
-                },
-                {
-                    text: "Ir a pantalla de error",
-                    onPress: () =>
-                        navigation.navigate("InvalidCodeScreen", {
-                            nombre_completo: fullName,
-                            email,
-                            numberphone: phoneNumber,
-                            placa: plateNumber,
-                            password,
-                        }),
                 },
             ])
         } finally {
@@ -225,19 +282,68 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 { headers: { "Content-Type": "application/json" } },
             )
             setTimeLeft(60)
-            Alert.alert("📩 Código reenviado", "Revisa tu correo")
+            showCustomModal(
+                "success",
+                "Código Reenviado",
+                "Se ha enviado un nuevo código de verificación a tu correo electrónico.",
+                [
+                    {
+                        text: "Perfecto",
+                        onPress: () => hideModal(),
+                    },
+                ],
+            )
         } catch (err) {
             const msg = err?.response?.data?.message || "No se pudo reenviar el código"
-            Alert.alert("Error", msg)
+            showCustomModal("error", "Error al Reenviar", msg, [
+                {
+                    text: "Entendido",
+                    onPress: () => hideModal(),
+                },
+            ])
         }
     }
 
-
-    const formatPhoneNumber = (phone) => {
-        if (phone.length > 6) {
-            return `***-***-${phone.slice(-4)}`
+    const getModalIcon = () => {
+        switch (modalConfig.type) {
+            case "success":
+                return "✅"
+            case "error":
+                return "❌"
+            case "info":
+                return "ℹ️"
+            default:
+                return "⚠️"
         }
-        return phone
+    }
+
+    const getModalColors = () => {
+        switch (modalConfig.type) {
+            case "success":
+                return {
+                    iconBg: "#E8F5E8",
+                    iconColor: "#4CAF50",
+                    buttonBg: "#4CAF50",
+                }
+            case "error":
+                return {
+                    iconBg: "#FFEBEE",
+                    iconColor: "#F44336",
+                    buttonBg: "#F44336",
+                }
+            case "info":
+                return {
+                    iconBg: "#E3F2FD",
+                    iconColor: "#2196F3",
+                    buttonBg: "#2196F3",
+                }
+            default:
+                return {
+                    iconBg: "#FFF3E0",
+                    iconColor: "#FF9800",
+                    buttonBg: "#FF9800",
+                }
+        }
     }
 
     return (
@@ -258,7 +364,7 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 <Text style={styles.title}>Verificación de Código</Text>
                 <Text style={styles.subtitle}>
                     Hemos enviado un código de 4 dígitos a{"\n"}
-                    <Text style={styles.phoneNumber}>{maskEmail(email)}</Text>
+                    <Text style={styles.emailText}>{maskEmail(email)}</Text>
                 </Text>
 
                 <View style={styles.codeContainer}>
@@ -309,7 +415,7 @@ const EnterCodeScreen = ({ route, navigation }) => {
                 </Animated.View>
 
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backContainer} activeOpacity={0.7}>
-                    <Text style={styles.backText}>← Cambiar número de teléfono</Text>
+                    <Text style={styles.backText}>← Cambiar correo electrónico</Text>
                 </TouchableOpacity>
 
                 <View style={styles.helpContainer}>
@@ -319,6 +425,41 @@ const EnterCodeScreen = ({ route, navigation }) => {
                     </Text>
                 </View>
             </Animated.View>
+
+            {/* Modal Personalizado */}
+            <Modal visible={showModal} transparent={true} animationType="none" onRequestClose={hideModal}>
+                <View style={styles.modalOverlay}>
+                    <Animated.View
+                        style={[
+                            styles.modalContainer,
+                            {
+                                opacity: modalAnim,
+                                transform: [{ translateY: modalSlideAnim }],
+                            },
+                        ]}
+                    >
+                        <View style={[styles.modalIconContainer, { backgroundColor: getModalColors().iconBg }]}>
+                            <Text style={[styles.modalIcon, { color: getModalColors().iconColor }]}>{getModalIcon()}</Text>
+                        </View>
+
+                        <Text style={styles.modalTitle}>{modalConfig.title}</Text>
+                        <Text style={styles.modalMessage}>{modalConfig.message}</Text>
+
+                        <View style={styles.modalButtonContainer}>
+                            {modalConfig.buttons.map((button, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[styles.modalButton, { backgroundColor: getModalColors().buttonBg }]}
+                                    onPress={button.onPress}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.modalButtonText}>{button.text}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </Animated.View>
+                </View>
+            </Modal>
         </KeyboardAvoidingView>
     )
 }
@@ -363,7 +504,7 @@ const styles = StyleSheet.create({
         textAlign: "center",
         lineHeight: 22,
     },
-    phoneNumber: {
+    emailText: {
         color: "#FF6B35",
         fontWeight: "bold",
     },
@@ -464,6 +605,79 @@ const styles = StyleSheet.create({
     },
     helpLink: {
         color: "#FF6B35",
+        fontWeight: "bold",
+    },
+    // Estilos del Modal
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 20,
+    },
+    modalContainer: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 30,
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 10,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        elevation: 10,
+        maxWidth: width - 40,
+        width: "100%",
+    },
+    modalIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 20,
+    },
+    modalIcon: {
+        fontSize: 40,
+        fontWeight: "bold",
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: "bold",
+        color: "#2C3E50",
+        textAlign: "center",
+        marginBottom: 15,
+    },
+    modalMessage: {
+        fontSize: 16,
+        color: "#7F8C8D",
+        textAlign: "center",
+        lineHeight: 24,
+        marginBottom: 30,
+    },
+    modalButtonContainer: {
+        width: "100%",
+        gap: 10,
+    },
+    modalButton: {
+        height: 50,
+        borderRadius: 12,
+        justifyContent: "center",
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    modalButtonText: {
+        color: "#FFFFFF",
+        fontSize: 16,
         fontWeight: "bold",
     },
 })

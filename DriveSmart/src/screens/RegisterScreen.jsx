@@ -8,12 +8,12 @@ import {
     TouchableOpacity,
     StyleSheet,
     Image,
-    Alert,
     Animated,
     Dimensions,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    Modal,
 } from "react-native"
 import axios from "axios"
 import Config from "react-native-config"
@@ -30,12 +30,22 @@ const RegisterScreen = ({ navigation }) => {
     const [password, setPassword] = useState("")
     const [confirmPassword, setConfirmPassword] = useState("")
     const [isLoading, setIsLoading] = useState(false)
+    const [modalVisible, setModalVisible] = useState(false)
+    const [modalConfig, setModalConfig] = useState({
+        title: "",
+        message: "",
+        icon: "",
+        color: "",
+        buttons: [],
+    })
 
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
     const slideAnim = useRef(new Animated.Value(50)).current
     const logoScale = useRef(new Animated.Value(0.8)).current
     const buttonScale = useRef(new Animated.Value(1)).current
+    const modalAnim = useRef(new Animated.Value(0)).current
+    const modalSlideAnim = useRef(new Animated.Value(50)).current
 
     useEffect(() => {
         // Animación de entrada
@@ -59,6 +69,42 @@ const RegisterScreen = ({ navigation }) => {
         ]).start()
     }, [])
 
+    const showModal = (config) => {
+        setModalConfig(config)
+        setModalVisible(true)
+        Animated.parallel([
+            Animated.timing(modalAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.spring(modalSlideAnim, {
+                toValue: 0,
+                tension: 50,
+                friction: 8,
+                useNativeDriver: true,
+            }),
+        ]).start()
+    }
+
+    const hideModal = () => {
+        Animated.parallel([
+            Animated.timing(modalAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(modalSlideAnim, {
+                toValue: 50,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setModalVisible(false)
+            modalSlideAnim.setValue(50)
+        })
+    }
+
     const animateButton = () => {
         Animated.sequence([
             Animated.timing(buttonScale, {
@@ -79,39 +125,131 @@ const RegisterScreen = ({ navigation }) => {
         return emailRegex.test(email)
     }
 
-    const validatePlateNumber = (plate) => {
-        const plateRegex = /^[A-Z0-9-]+$/
-        return plateRegex.test(plate)
+    const validateBolivianPlate = (plate) => {
+        // Formato boliviano: 4 dígitos + 3 letras (ej: 1234ABC)
+        const bolivianPlateRegex = /^[0-9]{4}[A-Z]{3}$/
+        return bolivianPlateRegex.test(plate)
+    }
+
+    const formatPlateNumber = (text) => {
+        // Convertir a mayúsculas y remover caracteres no válidos
+        const cleaned = text.toUpperCase().replace(/[^0-9A-Z]/g, "")
+
+        // Limitar a 7 caracteres máximo
+        if (cleaned.length > 7) return plateNumber
+
+        // Formatear: primeros 4 deben ser números, siguientes 3 letras
+        let formatted = ""
+        for (let i = 0; i < cleaned.length; i++) {
+            if (i < 4) {
+                // Primeros 4 caracteres deben ser números
+                if (/[0-9]/.test(cleaned[i])) {
+                    formatted += cleaned[i]
+                }
+            } else {
+                // Siguientes 3 caracteres deben ser letras
+                if (/[A-Z]/.test(cleaned[i])) {
+                    formatted += cleaned[i]
+                }
+            }
+        }
+
+        return formatted
+    }
+
+    const handlePlateChange = (text) => {
+        const formatted = formatPlateNumber(text)
+        setPlateNumber(formatted)
     }
 
     const handleRegister = async () => {
         // Validación de campos vacíos
         if (!fullName || !email || !phoneNumber || !plateNumber || !password || !confirmPassword) {
-            Alert.alert("Error", "Por favor, completa todos los campos")
+            showModal({
+                title: "Campos Incompletos",
+                message: "Por favor, completa todos los campos para continuar",
+                icon: "⚠️",
+                color: "#FFA726",
+                buttons: [
+                    {
+                        text: "Entendido",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
             return
         }
 
         // Validación de formato de correo electrónico
         if (!validateEmail(email)) {
-            Alert.alert("Error", "Por favor, introduce un correo electrónico válido")
+            showModal({
+                title: "Email Inválido",
+                message: "Por favor, introduce un correo electrónico válido",
+                icon: "📧",
+                color: "#FF5722",
+                buttons: [
+                    {
+                        text: "Corregir",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
             return
         }
 
-        // Validación de formato de número de placa
-        if (!validatePlateNumber(plateNumber)) {
-            Alert.alert("Error", "El número de placa solo puede contener letras, números y guiones")
+        // Validación de formato de placa boliviana
+        if (!validateBolivianPlate(plateNumber)) {
+            showModal({
+                title: "Placa Inválida",
+                message: "La placa debe tener el formato boliviano: 4 números seguidos de 3 letras (ej: 1234ABC)",
+                icon: "🚗",
+                color: "#FF5722",
+                buttons: [
+                    {
+                        text: "Corregir",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
             return
         }
 
         // Validación de contraseña
         if (password.length < 6) {
-            Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres")
+            showModal({
+                title: "Contraseña Débil",
+                message: "La contraseña debe tener al menos 6 caracteres para mayor seguridad",
+                icon: "🔒",
+                color: "#FF5722",
+                buttons: [
+                    {
+                        text: "Corregir",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
             return
         }
 
         // Validación de confirmación de contraseña
         if (password !== confirmPassword) {
-            Alert.alert("Error", "Las contraseñas no coinciden")
+            showModal({
+                title: "Contraseñas No Coinciden",
+                message: "Las contraseñas ingresadas no son iguales. Por favor, verifícalas",
+                icon: "🔐",
+                color: "#FF5722",
+                buttons: [
+                    {
+                        text: "Corregir",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
             return
         }
 
@@ -142,13 +280,24 @@ const RegisterScreen = ({ navigation }) => {
                 password,
             })
         } catch (err) {
-            const msg = err?.response?.data?.message || "Error solicitando el código"
-            Alert.alert("Error", msg)
+            const msg = err?.response?.data?.message || "Error al solicitar el código de verificación"
+            showModal({
+                title: "Error de Registro",
+                message: msg,
+                icon: "❌",
+                color: "#F44336",
+                buttons: [
+                    {
+                        text: "Reintentar",
+                        onPress: hideModal,
+                        style: "primary",
+                    },
+                ],
+            })
         } finally {
             setIsLoading(false)
         }
     }
-
 
     const handleCountrySelect = (code) => {
         setCountryCode(code)
@@ -202,6 +351,7 @@ const RegisterScreen = ({ navigation }) => {
                                 <CountryPicker onSelectCountry={handleCountrySelect} />
                             </View>
                             <View style={styles.phoneInputContainer}>
+                                <Text style={styles.countryCodeText}>{countryCode}</Text>
                                 <TextInput
                                     style={styles.phoneInput}
                                     placeholder="Número"
@@ -216,12 +366,13 @@ const RegisterScreen = ({ navigation }) => {
                         <View style={styles.inputContainer}>
                             <TextInput
                                 style={styles.input}
-                                placeholder="Número de Placa (ej: ABC-123)"
+                                placeholder="Placa (ej: 1234ABC)"
                                 placeholderTextColor="#999"
                                 value={plateNumber}
-                                onChangeText={setPlateNumber}
-                                autoCapitalize="characters"
+                                onChangeText={handlePlateChange}
+                                maxLength={7}
                             />
+                            <Text style={styles.plateHint}>Formato: 4 números + 3 letras</Text>
                         </View>
 
                         <View style={styles.inputContainer}>
@@ -273,6 +424,43 @@ const RegisterScreen = ({ navigation }) => {
                     </View>
                 </Animated.View>
             </ScrollView>
+
+            {/* Modal Personalizado */}
+            <Modal visible={modalVisible} transparent={true} animationType="none" onRequestClose={hideModal}>
+                <Animated.View style={[styles.modalOverlay, { opacity: modalAnim }]}>
+                    <Animated.View
+                        style={[
+                            styles.modalContainer,
+                            {
+                                transform: [{ translateY: modalSlideAnim }],
+                                borderTopColor: modalConfig.color,
+                            },
+                        ]}
+                    >
+                        <View style={[styles.modalIconContainer, { backgroundColor: modalConfig.color + "20" }]}>
+                            <Text style={styles.modalIcon}>{modalConfig.icon}</Text>
+                        </View>
+
+                        <Text style={styles.modalTitle}>{modalConfig.title}</Text>
+                        <Text style={styles.modalMessage}>{modalConfig.message}</Text>
+
+                        <View style={styles.modalButtonContainer}>
+                            {modalConfig.buttons.map((button, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[styles.modalButton, button.style === "primary" && { backgroundColor: modalConfig.color }]}
+                                    onPress={button.onPress}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={[styles.modalButtonText, button.style === "primary" && styles.modalButtonTextPrimary]}>
+                                        {button.text}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </Animated.View>
+                </Animated.View>
+            </Modal>
         </KeyboardAvoidingView>
     )
 }
@@ -350,7 +538,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         width: "100%",
         marginBottom: 16,
-        gap: 10,
+        gap: 12,
     },
     countryPickerContainer: {
         backgroundColor: "#F8F9FA",
@@ -363,19 +551,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 3,
+        paddingHorizontal: 4,
     },
     phoneInputContainer: {
         flex: 1,
-    },
-    phoneInput: {
-        height: 55,
+        flexDirection: "row",
+        alignItems: "center",
         backgroundColor: "#F8F9FA",
         borderRadius: 12,
-        paddingHorizontal: 20,
-        fontSize: 16,
-        color: "#2C3E50",
-        borderWidth: 2,
-        borderColor: "transparent",
         shadowColor: "#000",
         shadowOffset: {
             width: 0,
@@ -384,6 +567,29 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 3,
+    },
+    countryCodeText: {
+        fontSize: 16,
+        color: "#2C3E50",
+        fontWeight: "600",
+        paddingLeft: 15,
+        paddingRight: 8,
+        borderRightWidth: 1,
+        borderRightColor: "#E1E8ED",
+    },
+    phoneInput: {
+        flex: 1,
+        height: 55,
+        paddingHorizontal: 15,
+        fontSize: 16,
+        color: "#2C3E50",
+    },
+    plateHint: {
+        fontSize: 12,
+        color: "#7F8C8D",
+        marginTop: 4,
+        marginLeft: 4,
+        fontStyle: "italic",
     },
     button: {
         width: width - 60,
@@ -436,6 +642,76 @@ const styles = StyleSheet.create({
     helpLink: {
         color: "#FF6B35",
         fontWeight: "bold",
+    },
+    // Estilos del Modal
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 20,
+    },
+    modalContainer: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 25,
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 10,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        elevation: 10,
+        borderTopWidth: 4,
+        minWidth: width - 80,
+    },
+    modalIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 20,
+    },
+    modalIcon: {
+        fontSize: 40,
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: "bold",
+        color: "#2C3E50",
+        marginBottom: 10,
+        textAlign: "center",
+    },
+    modalMessage: {
+        fontSize: 16,
+        color: "#7F8C8D",
+        textAlign: "center",
+        lineHeight: 22,
+        marginBottom: 25,
+    },
+    modalButtonContainer: {
+        flexDirection: "row",
+        gap: 10,
+        width: "100%",
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 10,
+        backgroundColor: "#F8F9FA",
+        alignItems: "center",
+    },
+    modalButtonText: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#7F8C8D",
+    },
+    modalButtonTextPrimary: {
+        color: "#FFFFFF",
     },
 })
 
