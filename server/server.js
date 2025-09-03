@@ -49,7 +49,7 @@ async function sendVerificationEmail(to, code) {
             <div style="max-width: 500px; margin: auto; background: #ffffff; border-radius: 10px; padding: 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);">
                 
                 <div style="text-align: center;">
-                <img src="../DriveSmart/assets/DRIVESMART.png" alt="DriveSmart" style="width: 120px; margin-bottom: 20px;" />
+                <img src="./assets/DRIVESMART.png" alt="DriveSmart" style="width: 120px; margin-bottom: 20px;" />
                 <h2 style="color: #333;">Verificación de tu cuenta</h2>
                 <p style="color: #555; font-size: 15px;">Gracias por registrarte en <b>DriveSmart</b>.  
                 Ingresa este código en la app para confirmar tu correo electrónico:</p>
