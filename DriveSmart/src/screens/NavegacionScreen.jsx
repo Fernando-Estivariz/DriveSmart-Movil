@@ -29,8 +29,6 @@ const { width, height } = Dimensions.get("window")
 const wp = (percentage) => (width * percentage) / 100
 const hp = (percentage) => (height * percentage) / 100
 
-const GOOGLE_MAPS_APIKEY = "AIzaSyCnYj53uccNgCSYv_3TEqaIrF3wGX039aM"
-
 // Constantes para navegación
 const ARRIVAL_THRESHOLD = 50 // metros para considerar llegada
 const REROUTE_THRESHOLD = 100 // metros para recalcular ruta
@@ -1303,7 +1301,7 @@ const NavegacionScreen = () => {
                     <MapViewDirections
                         origin={currentLocation}
                         destination={destinationLocation}
-                        apikey={GOOGLE_MAPS_APIKEY}
+                        apikey={Config.GOOGLE_MAPS_APIKEY}
                         language="es"
                         strokeWidth={6}
                         strokeColor="#FF6B35"
@@ -1320,7 +1318,7 @@ const NavegacionScreen = () => {
                     <MapViewDirections
                         origin={currentLocation}
                         destination={selectedParkingSpot.midPoint}
-                        apikey={GOOGLE_MAPS_APIKEY}
+                        apikey={Config.GOOGLE_MAPS_APIKEY}
                         language="es"
                         strokeWidth={6}
                         strokeColor="#9B59B6"

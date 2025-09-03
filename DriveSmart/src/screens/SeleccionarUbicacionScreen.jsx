@@ -15,6 +15,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons"
 import MapView from "react-native-maps"
 import Geolocation from "@react-native-community/geolocation"
+import Config from "react-native-config"
 import { useNavigation } from "@react-navigation/native"
 
 const { width, height } = Dimensions.get("window")
@@ -31,9 +32,6 @@ const SeleccionarUbicacionScreen = () => {
     const [isLoading, setIsLoading] = useState(true)
     const [isDragging, setIsDragging] = useState(false)
 
-    // API Key de Google
-    const GOOGLE_GEOCODING_API_KEY = "AIzaSyCnYj53uccNgCSYv_3TEqaIrF3wGX039aM"
-
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
     const slideUpAnim = useRef(new Animated.Value(100)).current
@@ -45,7 +43,7 @@ const SeleccionarUbicacionScreen = () => {
     const getAddressFromCoordinates = async (latitude, longitude) => {
         try {
             const response = await fetch(
-                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_GEOCODING_API_KEY}&language=es`,
+                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_GEOCODING_API_KEY}&language=es`,
             )
             const data = await response.json()
 

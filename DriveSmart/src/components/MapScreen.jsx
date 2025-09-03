@@ -114,7 +114,7 @@ export default function MapScreen({ navigation }) {
                 const dest = `${destination.midPoint.latitude},${destination.midPoint.longitude}`
 
                 const response = await fetch(
-                    `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${dest}&key=AIzaSyCnYj53uccNgCSYv_3TEqaIrF3wGX039aM`,
+                    `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${dest}&key=${Config.GOOGLE_MAPS_API_KEY}`,
                 )
                 const data = await response.json()
 
