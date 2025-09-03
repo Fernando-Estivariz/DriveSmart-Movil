@@ -41,7 +41,7 @@ transporter.verify((err) => {
 async function sendVerificationEmail(to, code) {
     try {
         const info = await transporter.sendMail({
-        from: process.env.FROM_EMAIL || process.env.SMTP_USER, // Usa tu Gmail si no tienes dominio
+        from: process.env.FROM_EMAIL || process.env.SMTP_USER, 
         to,
         subject: "Tu código de verificación - DriveSmart",
         html: `
