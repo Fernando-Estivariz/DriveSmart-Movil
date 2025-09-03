@@ -41,24 +41,45 @@ transporter.verify((err) => {
 async function sendVerificationEmail(to, code) {
     try {
         const info = await transporter.sendMail({
-        from: process.env.FROM_EMAIL || process.env.SMTP_USER, // usa tu Gmail si no tienes dominio
+        from: process.env.FROM_EMAIL || process.env.SMTP_USER, // Usa tu Gmail si no tienes dominio
         to,
-        subject: 'Tu código de verificación (DriveSmart)',
+        subject: "Tu código de verificación - DriveSmart",
         html: `
-            <div style="font-family:Arial,sans-serif">
-            <h2>Verificación de cuenta</h2>
-            <p>Tu código para terminar el registro es:</p>
-            <div style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</div>
-            <p>Este código expira en 10 minutos.</p>
+            <div style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 30px;">
+            <div style="max-width: 500px; margin: auto; background: #ffffff; border-radius: 10px; padding: 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);">
+                
+                <div style="text-align: center;">
+                <img src="../DriveSmart/assets/DRIVESMART.png" alt="DriveSmart" style="width: 120px; margin-bottom: 20px;" />
+                <h2 style="color: #333;">Verificación de tu cuenta</h2>
+                <p style="color: #555; font-size: 15px;">Gracias por registrarte en <b>DriveSmart</b>.  
+                Ingresa este código en la app para confirmar tu correo electrónico:</p>
+                
+                <div style="margin: 20px 0; padding: 15px; background: #FF6B35; color: white; font-size: 30px; font-weight: bold; border-radius: 8px; letter-spacing: 8px;">
+                    ${code}
+                </div>
+
+                <p style="color: #999; font-size: 13px;">
+                    Este código expira en <b>10 minutos</b>.  
+                    Si no solicitaste este registro, por favor ignora este correo.
+                </p>
+                </div>
+                
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;" />
+                <p style="text-align: center; font-size: 12px; color: #aaa;">
+                © ${new Date().getFullYear()} DriveSmart. Todos los derechos reservados.
+                </p>
+            </div>
             </div>
         `,
         });
+
         return info;
     } catch (err) {
-        console.error('sendVerificationEmail error:', err);
+        console.error("sendVerificationEmail error:", err);
         throw err;
     }
 }
+
 
 // ------------------------------------------------------------------
 // OTP helpers y tabla temporal de pre-registro
