@@ -17,7 +17,6 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { GoogleSignin } from "@react-native-google-signin/google-signin"
 
-
 const { width, height } = Dimensions.get("window")
 
 // Responsive helper functions
@@ -71,6 +70,15 @@ const MenuScreen = ({ navigation }) => {
         },
         {
             id: 5,
+            title: "Estadísticas",
+            subtitle: "Analiza tus viajes y datos",
+            icon: "analytics",
+            color: "#1ABC9C",
+            bgColor: "#E8F8F5",
+            onPress: () => navigation.navigate("EstadisticasScreen"),
+        },
+        {
+            id: 6,
             title: "Cómo Usar la App",
             subtitle: "Guía de usuario",
             icon: "help-outline",
@@ -151,7 +159,7 @@ const MenuScreen = ({ navigation }) => {
                 // Resetear navegación
                 navigation.reset({
                     index: 0,
-                    routes: [{ name: "LogingScreen" }], 
+                    routes: [{ name: "LogingScreen" }],
                 })
             }
         })
@@ -228,26 +236,13 @@ const MenuScreen = ({ navigation }) => {
                 {/* Menu Items */}
                 <View style={styles.menuSection}>
                     <Text style={styles.sectionTitle}>Funciones Principales</Text>
-                    {menuItems.slice(0, 4).map((item, index) => renderMenuItem(item, index))}
+                    {menuItems.slice(0, 5).map((item, index) => renderMenuItem(item, index))}
                 </View>
 
                 <View style={styles.menuSection}>
                     <Text style={styles.sectionTitle}>Ayuda</Text>
-                    {menuItems.slice(4).map((item, index) => renderMenuItem(item, index + 4))}
+                    {menuItems.slice(5).map((item, index) => renderMenuItem(item, index + 5))}
                 </View>
-
-                {/* 
-                <Animated.View
-                    style={[
-                        styles.statsSection,
-                        {
-                            opacity: fadeAnim,
-                        },
-                    ]}
-                >
-                </Animated.View> 
-                
-                Stats Section */}
 
                 {/* Logout Button */}
                 <Animated.View

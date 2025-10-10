@@ -1,0 +1,38 @@
+"filename", "language", "TypeScript JSX", "JSON", "JavaScript JSX", "JSON with Comments", "JavaScript", "Markdown", "Ruby", "comment", "blank", "total"
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.eslintrc.js", "JavaScript", 0, 0, 0, 0, 4, 0, 0, 0, 1, 5
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.prettierrc.js", "JavaScript", 0, 0, 0, 0, 7, 0, 0, 0, 1, 8
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.watchmanconfig", "JSON", 0, 1, 0, 0, 0, 0, 0, 0, 1, 2
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\App.js", "JavaScript", 0, 0, 0, 0, 60, 0, 0, 0, 9, 69
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\Gemfile", "Ruby", 0, 0, 0, 0, 0, 0, 4, 2, 3, 9
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\README.md", "Markdown", 0, 0, 0, 0, 0, 49, 0, 0, 31, 80
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\__tests__\App.test.tsx", "TypeScript JSX", 8, 0, 0, 0, 0, 0, 0, 5, 5, 18
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\app.json", "JSON", 0, 4, 0, 0, 0, 0, 0, 0, 1, 5
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\babel.config.js", "JavaScript", 0, 0, 0, 0, 3, 0, 0, 0, 1, 4
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\index.js", "JavaScript", 0, 0, 0, 0, 5, 0, 0, 0, 2, 7
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\jest.config.js", "JavaScript", 0, 0, 0, 0, 3, 0, 0, 0, 1, 4
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\metro.config.js", "JavaScript", 0, 0, 0, 0, 3, 0, 0, 6, 3, 12
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\package-lock.json", "JSON", 0, 14874, 0, 0, 0, 0, 0, 0, 1, 14875
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\package.json", "JSON", 0, 60, 0, 0, 0, 0, 0, 0, 1, 61
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\CountryPicker.jsx", "JavaScript JSX", 0, 0, 187, 0, 0, 0, 0, 0, 12, 199
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapEstacionamientoScreen.jsx", "JavaScript JSX", 0, 0, 338, 0, 0, 0, 0, 14, 37, 389
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapPlacasScreen.jsx", "JavaScript JSX", 0, 0, 430, 0, 0, 0, 0, 23, 40, 493
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapScreen.jsx", "JavaScript JSX", 0, 0, 563, 0, 0, 0, 0, 40, 69, 672
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\ConfirmarRecorridoScreen.jsx", "JavaScript JSX", 0, 0, 631, 0, 0, 0, 0, 22, 53, 706
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EditProfileScreen.jsx", "JavaScript JSX", 0, 0, 496, 0, 0, 0, 0, 16, 34, 546
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EnterCodeScreen.jsx", "JavaScript JSX", 0, 0, 625, 0, 0, 0, 0, 16, 45, 686
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EstadisticasScreen.jsx", "JavaScript JSX", 0, 0, 711, 0, 0, 0, 0, 19, 40, 770
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\Home.jsx", "JavaScript JSX", 0, 0, 240, 0, 0, 0, 0, 8, 18, 266
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\HowToUseScreen.jsx", "JavaScript JSX", 0, 0, 598, 0, 0, 0, 0, 19, 34, 651
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\InvalidCodeScreen.jsx", "JavaScript JSX", 0, 0, 464, 0, 0, 0, 0, 9, 40, 513
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\Login.jsx", "JavaScript JSX", 0, 0, 590, 0, 0, 0, 0, 28, 44, 662
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\LogingScreen.jsx", "JavaScript JSX", 0, 0, 33, 0, 0, 0, 0, 2, 6, 41
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MapaEstacionamientos.jsx", "JavaScript JSX", 0, 0, 574, 0, 0, 0, 0, 15, 35, 624
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MapaPlacas.jsx", "JavaScript JSX", 0, 0, 447, 0, 0, 0, 0, 16, 24, 487
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MenuScreen.jsx", "JavaScript JSX", 0, 0, 435, 0, 0, 0, 0, 14, 23, 472
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\NavegacionScreen.jsx", "JavaScript JSX", 0, 0, 2782, 0, 0, 0, 0, 190, 258, 3230
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\RegisterScreen.jsx", "JavaScript JSX", 0, 0, 661, 0, 0, 0, 0, 16, 42, 719
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SearchScreen.jsx", "JavaScript JSX", 0, 0, 420, 0, 0, 0, 0, 15, 27, 462
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SeleccionarUbicacionScreen.jsx", "JavaScript JSX", 0, 0, 529, 0, 0, 0, 0, 21, 38, 588
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SuccessScreen.jsx", "JavaScript JSX", 0, 0, 466, 0, 0, 0, 0, 21, 33, 520
+"c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\tsconfig.json", "JSON with Comments", 0, 0, 0, 3, 0, 0, 0, 0, 1, 4
+"Total", "-", 8, 14939, 12220, 3, 85, 49, 4, 537, 1014, 28859

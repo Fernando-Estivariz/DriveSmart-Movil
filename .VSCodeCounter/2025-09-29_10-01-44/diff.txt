@@ -1,0 +1,78 @@
+Date : 2025-09-29 10:01:44
+Directory : c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\server
+Total : 40 files,  -24858 codes, -452 comments, -870 blanks, all -26180 lines
+
+Languages
++--------------------+------------+------------+------------+------------+------------+
+| language           | files      | code       | comment    | blank      | total      |
++--------------------+------------+------------+------------+------------+------------+
+| JavaScript         |          9 |        703 |         79 |        124 |        906 |
+| JSON with Comments |          1 |         -3 |          0 |         -1 |         -4 |
+| Ruby               |          1 |         -4 |         -2 |         -3 |         -9 |
+| TypeScript JSX     |          1 |         -8 |         -5 |         -5 |        -18 |
+| Markdown           |          1 |        -49 |          0 |        -31 |        -80 |
+| JavaScript JSX     |         21 |    -12,220 |       -524 |       -952 |    -13,696 |
+| JSON               |          6 |    -13,277 |          0 |         -2 |    -13,279 |
++--------------------+------------+------------+------------+------------+------------+
+
+Directories
++------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                                       | files      | code       | comment    | blank      | total      |
++------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                                          |         40 |    -24,858 |       -452 |       -870 |    -26,180 |
+| . (Files)                                                                                                  |          4 |      2,450 |         85 |        144 |      2,679 |
+| ..                                                                                                         |         36 |    -27,308 |       -537 |     -1,014 |    -28,859 |
+| ..\DriveSmart                                                                                              |         36 |    -27,308 |       -537 |     -1,014 |    -28,859 |
+| ..\DriveSmart (Files)                                                                                      |         14 |    -15,080 |         -8 |        -57 |    -15,145 |
+| ..\DriveSmart\__tests__                                                                                    |          1 |         -8 |         -5 |         -5 |        -18 |
+| ..\DriveSmart\src                                                                                          |         21 |    -12,220 |       -524 |       -952 |    -13,696 |
+| ..\DriveSmart\src\components                                                                               |          4 |     -1,518 |        -77 |       -158 |     -1,753 |
+| ..\DriveSmart\src\screens                                                                                  |         17 |    -10,702 |       -447 |       -794 |    -11,943 |
++------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++------------------------------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| filename                                                                                                   | language           | code       | comment    | blank      | total      |
++------------------------------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.eslintrc.js                                | JavaScript         |         -4 |          0 |         -1 |         -5 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.prettierrc.js                              | JavaScript         |         -7 |          0 |         -1 |         -8 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\.watchmanconfig                             | JSON               |         -1 |          0 |         -1 |         -2 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\App.js                                      | JavaScript         |        -60 |          0 |         -9 |        -69 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\Gemfile                                     | Ruby               |         -4 |         -2 |         -3 |         -9 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\README.md                                   | Markdown           |        -49 |          0 |        -31 |        -80 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\__tests__\App.test.tsx                      | TypeScript JSX     |         -8 |         -5 |         -5 |        -18 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\app.json                                    | JSON               |         -4 |          0 |         -1 |         -5 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\babel.config.js                             | JavaScript         |         -3 |          0 |         -1 |         -4 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\index.js                                    | JavaScript         |         -5 |          0 |         -2 |         -7 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\jest.config.js                              | JavaScript         |         -3 |          0 |         -1 |         -4 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\metro.config.js                             | JavaScript         |         -3 |         -6 |         -3 |        -12 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\package-lock.json                           | JSON               |    -14,874 |          0 |         -1 |    -14,875 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\package.json                                | JSON               |        -60 |          0 |         -1 |        -61 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\CountryPicker.jsx            | JavaScript JSX     |       -187 |          0 |        -12 |       -199 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapEstacionamientoScreen.jsx | JavaScript JSX     |       -338 |        -14 |        -37 |       -389 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapPlacasScreen.jsx          | JavaScript JSX     |       -430 |        -23 |        -40 |       -493 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\components\MapScreen.jsx                | JavaScript JSX     |       -563 |        -40 |        -69 |       -672 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\ConfirmarRecorridoScreen.jsx    | JavaScript JSX     |       -631 |        -22 |        -53 |       -706 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EditProfileScreen.jsx           | JavaScript JSX     |       -496 |        -16 |        -34 |       -546 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EnterCodeScreen.jsx             | JavaScript JSX     |       -625 |        -16 |        -45 |       -686 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\EstadisticasScreen.jsx          | JavaScript JSX     |       -711 |        -19 |        -40 |       -770 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\Home.jsx                        | JavaScript JSX     |       -240 |         -8 |        -18 |       -266 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\HowToUseScreen.jsx              | JavaScript JSX     |       -598 |        -19 |        -34 |       -651 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\InvalidCodeScreen.jsx           | JavaScript JSX     |       -464 |         -9 |        -40 |       -513 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\Login.jsx                       | JavaScript JSX     |       -590 |        -28 |        -44 |       -662 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\LogingScreen.jsx                | JavaScript JSX     |        -33 |         -2 |         -6 |        -41 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MapaEstacionamientos.jsx        | JavaScript JSX     |       -574 |        -15 |        -35 |       -624 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MapaPlacas.jsx                  | JavaScript JSX     |       -447 |        -16 |        -24 |       -487 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\MenuScreen.jsx                  | JavaScript JSX     |       -435 |        -14 |        -23 |       -472 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\NavegacionScreen.jsx            | JavaScript JSX     |     -2,782 |       -190 |       -258 |     -3,230 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\RegisterScreen.jsx              | JavaScript JSX     |       -661 |        -16 |        -42 |       -719 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SearchScreen.jsx                | JavaScript JSX     |       -420 |        -15 |        -27 |       -462 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SeleccionarUbicacionScreen.jsx  | JavaScript JSX     |       -529 |        -21 |        -38 |       -588 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\src\screens\SuccessScreen.jsx               | JavaScript JSX     |       -466 |        -21 |        -33 |       -520 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\DriveSmart\tsconfig.json                               | JSON with Comments |         -3 |          0 |         -1 |         -4 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\server\database.js                                     | JavaScript         |         14 |          2 |          3 |         19 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\server\package-lock.json                               | JSON               |      1,638 |          0 |          1 |      1,639 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\server\package.json                                    | JSON               |         24 |          0 |          1 |         25 |
+| c:\Users\ferna\Desktop\8VO SEMESTRE\MovilDriveSmart\server\server.js                                       | JavaScript         |        774 |         83 |        139 |        996 |
+| Total                                                                                                      |                    |    -24,858 |       -452 |       -870 |    -26,180 |
++------------------------------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+

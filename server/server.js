@@ -15,6 +15,7 @@ app.use(cors({
 
 const PORT = process.env.PORT || 3000;
 
+
 const jwtSecret = process.env.JWT_SECRET || "secreto_del_token";
 const signToken = (payload) => jwt.sign(payload, jwtSecret, { expiresIn: "7d" });
 
@@ -27,9 +28,9 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
 const SMTP_PORT_NUM = parseInt(process.env.SMTP_PORT || "587", 10);
 
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,                 
-    port: SMTP_PORT_NUM,                         
-    secure: SMTP_PORT_NUM === 465,               
+    host: process.env.SMTP_HOST,
+    port: SMTP_PORT_NUM,
+    secure: SMTP_PORT_NUM === 465,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
@@ -41,10 +42,10 @@ transporter.verify((err) => {
 async function sendVerificationEmail(to, code) {
     try {
         const info = await transporter.sendMail({
-        from: process.env.FROM_EMAIL || process.env.SMTP_USER, 
-        to,
-        subject: "Tu código de verificación - DriveSmart",
-        html: `
+            from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+            to,
+            subject: "Tu código de verificación - DriveSmart",
+            html: `
             <div style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 30px;">
             <div style="max-width: 500px; margin: auto; background: #ffffff; border-radius: 10px; padding: 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);">
                 
@@ -189,12 +190,12 @@ app.post('/auth/register/request-otp', async (req, res) => {
     try {
         const { nombre_completo, email, numberphone, placa, password } = req.body;
         if (!nombre_completo || !email || !password) {
-        return res.status(400).json({ message: 'Faltan campos obligatorios' });
+            return res.status(400).json({ message: 'Faltan campos obligatorios' });
         }
 
         const existing = await pool.query('SELECT 1 FROM user_mobile WHERE email = $1', [email]);
         if (existing.rowCount > 0) {
-        return res.status(409).json({ message: 'El usuario ya existe' });
+            return res.status(409).json({ message: 'El usuario ya existe' });
         }
 
         const code = gen4();
@@ -202,7 +203,7 @@ app.post('/auth/register/request-otp', async (req, res) => {
         const password_hash = await bcrypt.hash(password, 10);
 
         await pool.query(
-        `INSERT INTO otp_requests (email, nombre_completo, numberphone, placa, password_hash, otp_code, otp_expires, attempts, resend_count)
+            `INSERT INTO otp_requests (email, nombre_completo, numberphone, placa, password_hash, otp_code, otp_expires, attempts, resend_count)
         VALUES ($1,$2,$3,$4,$5,$6,$7,0,0)
         ON CONFLICT (email)
         DO UPDATE SET
@@ -214,7 +215,7 @@ app.post('/auth/register/request-otp', async (req, res) => {
             otp_expires=EXCLUDED.otp_expires,
             attempts=0,
             resend_count=0`,
-        [email, nombre_completo, numberphone, placa, password_hash, code, expiresAt]
+            [email, nombre_completo, numberphone, placa, password_hash, code, expiresAt]
         );
 
         await sendVerificationEmail(email, code);
@@ -236,17 +237,17 @@ app.post('/auth/register/verify-otp', async (req, res) => {
 
         const existingUser = await pool.query('SELECT * FROM user_mobile WHERE email = $1', [email]);
         if (existingUser.rowCount > 0) {
-        const token = signToken({ email });
-        const u = existingUser.rows[0];
-        return res.json({
-            token,
-            user: {
-            nombre_completo: u.nombre_completo,
-            email: u.email,
-            numberphone: u.numberphone,
-            placa: u.placa,
-            },
-        });
+            const token = signToken({ email });
+            const u = existingUser.rows[0];
+            return res.json({
+                token,
+                user: {
+                    nombre_completo: u.nombre_completo,
+                    email: u.email,
+                    numberphone: u.numberphone,
+                    placa: u.placa,
+                },
+            });
         }
 
         const { rows } = await pool.query('SELECT * FROM otp_requests WHERE email = $1', [email]);
@@ -255,21 +256,21 @@ app.post('/auth/register/verify-otp', async (req, res) => {
         const r = rows[0];
 
         if (r.attempts >= MAX_ATTEMPTS) {
-        return res.status(429).json({ message: 'Demasiados intentos, solicita un nuevo código' });
+            return res.status(429).json({ message: 'Demasiados intentos, solicita un nuevo código' });
         }
         if (!r.otp_code || !r.otp_expires || new Date(r.otp_expires) < new Date()) {
-        return res.status(400).json({ message: 'Código expirado o inválido' });
+            return res.status(400).json({ message: 'Código expirado o inválido' });
         }
         if (r.otp_code !== code) {
-        await pool.query('UPDATE otp_requests SET attempts = attempts + 1 WHERE email = $1', [email]);
-        return res.status(400).json({ message: 'Código incorrecto' });
+            await pool.query('UPDATE otp_requests SET attempts = attempts + 1 WHERE email = $1', [email]);
+            return res.status(400).json({ message: 'Código incorrecto' });
         }
 
         const insert = await pool.query(
-        `INSERT INTO user_mobile (nombre_completo, email, numberphone, placa, password)
+            `INSERT INTO user_mobile (nombre_completo, email, numberphone, placa, password)
         VALUES ($1,$2,$3,$4,$5)
         RETURNING nombre_completo, email, numberphone, placa`,
-        [r.nombre_completo, email, r.numberphone, r.placa, r.password_hash]
+            [r.nombre_completo, email, r.numberphone, r.placa, r.password_hash]
         );
 
         await pool.query('DELETE FROM otp_requests WHERE email = $1', [email]);
@@ -307,10 +308,10 @@ app.post('/auth/register/resend-otp', async (req, res) => {
             SET otp_code=$1, otp_expires=$2, attempts=0, resend_count=resend_count+1
             WHERE email=$3`,
             [newCode, newExpires, email]
-            );
+        );
 
-            await sendVerificationEmail(email, newCode);
-            return res.json({ message: 'Código reenviado' });
+        await sendVerificationEmail(email, newCode);
+        return res.json({ message: 'Código reenviado' });
     } catch (err) {
         console.error('resend-otp error:', err);
         return res.status(500).json({ message: 'Error reenviando código' });
@@ -475,6 +476,520 @@ app.get('/mapeado', async (req, res) => {
 });
 
 
+
+// Middleware para verificar token JWT
+const verifyToken = (req, res, next) => {
+    try {
+        const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
+
+        if (!token) {
+            return res.status(401).json({ message: 'Token no proporcionado' });
+        }
+
+        const decoded = jwt.verify(token, jwtSecret);
+        req.userEmail = decoded.email;
+        next();
+    } catch (error) {
+        console.error('Error verificando token:', error);
+        return res.status(401).json({ message: 'Token inválido' });
+    }
+};
+
+// Endpoint para obtener estadísticas
+app.get("/estadisticas", verifyToken, async (req, res) => {
+    try {
+        const { fechaInicio, fechaFin } = req.query
+        const userEmail = req.userEmail
+
+        // Construir condiciones de fecha
+        let dateCondition = ""
+        const queryParams = [userEmail]
+
+        if (fechaInicio && fechaFin) {
+            dateCondition = " AND inicio_en >= $2 AND inicio_en <= $3"
+            queryParams.push(fechaInicio, fechaFin)
+        }
+
+        // Consulta principal de estadísticas usando tu tabla historial
+        const statsQuery = `
+            SELECT 
+                COUNT(*) as total_viajes,
+                COALESCE(SUM(distancia_km), 0) as kilometros_recorridos,
+                COALESCE(SUM(EXTRACT(EPOCH FROM tiempo_fin)/60), 0) as tiempo_ahorrado,
+                COUNT(CASE WHEN estado = 'completado' THEN 1 END) as viajes_completados,
+                COUNT(CASE WHEN estado = 'cancelado' THEN 1 END) as viajes_cancelados,
+                COUNT(CASE WHEN encontro_estacionamiento = true THEN 1 END) as viajes_con_parking,
+                COUNT(CASE WHEN encontro_estacionamiento = false THEN 1 END) as viajes_sin_parking
+            FROM historial 
+            WHERE email_usuario = $1 ${dateCondition}
+        `
+
+        const statsResult = await pool.query(statsQuery, queryParams)
+        const stats = statsResult.rows[0]
+
+        // Consulta para gráfico semanal (últimos 7 días)
+        const weeklyQuery = `
+            SELECT 
+                EXTRACT(DOW FROM inicio_en) as dia_semana,
+                COUNT(*) as cantidad
+            FROM historial 
+            WHERE email_usuario = $1 
+            AND inicio_en >= NOW() - INTERVAL '7 days'
+            GROUP BY EXTRACT(DOW FROM inicio_en)
+            ORDER BY dia_semana
+        `
+
+        const weeklyResult = await pool.query(weeklyQuery, [userEmail])
+
+        // Convertir a array de 7 días (Lunes=0, Domingo=6)
+        const viajesPorDia = [0, 0, 0, 0, 0, 0, 0]
+        weeklyResult.rows.forEach((row) => {
+            // PostgreSQL: 0=Domingo, 1=Lunes, ..., 6=Sábado
+            // Convertir a: 0=Lunes, 1=Martes, ..., 6=Domingo
+            const diaIndex = row.dia_semana === 0 ? 6 : row.dia_semana - 1
+            viajesPorDia[diaIndex] = Number.parseInt(row.cantidad)
+        })
+
+        // Consulta para mapa de calor usando tu geometría PostGIS
+        const heatmapQuery = `
+            SELECT 
+                ST_Y(destino) as latitude,
+                ST_X(destino) as longitude,
+                COUNT(*) as weight
+            FROM historial 
+            WHERE email_usuario = $1 
+            AND destino IS NOT NULL 
+            ${dateCondition}
+            GROUP BY destino
+            ORDER BY weight DESC
+            LIMIT 50
+        `
+
+        const heatmapResult = await pool.query(heatmapQuery, queryParams)
+        const heatmapData = heatmapResult.rows.map((row) => ({
+            latitude: Number.parseFloat(row.latitude),
+            longitude: Number.parseFloat(row.longitude),
+            weight: Math.min(Number.parseInt(row.weight) / 10, 1), // Normalizar peso
+        }))
+
+        // Respuesta final
+        res.json({
+            success: true,
+            estadisticas: {
+                totalViajes: Number.parseInt(stats.total_viajes),
+                kilometrosRecorridos: Number.parseFloat(stats.kilometros_recorridos),
+                tiempoAhorrado: Number.parseInt(stats.tiempo_ahorrado),
+                viajesCompletados: Number.parseInt(stats.viajes_completados),
+                viajesCancelados: Number.parseInt(stats.viajes_cancelados),
+                viajesConParking: Number.parseInt(stats.viajes_con_parking),
+                viajesSinParking: Number.parseInt(stats.viajes_sin_parking),
+            },
+            graficos: {
+                viajesPorDia: viajesPorDia,
+                heatmapData: heatmapData,
+            },
+        })
+    } catch (error) {
+        console.error("Error obteniendo estadísticas:", error)
+
+        // En caso de error, devolver estructura vacía pero válida
+        res.json({
+            success: true,
+            estadisticas: {
+                totalViajes: 0,
+                kilometrosRecorridos: 0,
+                tiempoAhorrado: 0,
+                viajesCompletados: 0,
+                viajesCancelados: 0,
+                viajesConParking: 0,
+                viajesSinParking: 0,
+            },
+            graficos: {
+                viajesPorDia: [0, 0, 0, 0, 0, 0, 0],
+                heatmapData: [],
+            },
+        })
+    }
+})
+
+// 1. ENDPOINT: Iniciar viaje (desde ConfirmarRecorridoScreen)
+app.post("/viajes/iniciar", verifyToken, async (req, res) => {
+    try {
+        const {
+            origen_lat,
+            origen_lng,
+            destino_lat,
+            destino_lng,
+            trayectoria_coords, // Array de coordenadas de la ruta planificada
+            distancia_estimada,
+        } = req.body
+
+        const userEmail = req.userEmail
+
+        // Validar datos requeridos
+        if (!origen_lat || !origen_lng || !destino_lat || !destino_lng) {
+            return res.status(400).json({
+                success: false,
+                message: "Coordenadas de origen y destino son requeridas",
+            })
+        }
+
+        // Crear geometrías PostGIS
+        const origenPoint = `POINT(${origen_lng} ${origen_lat})`
+        const destinoPoint = `POINT(${destino_lng} ${destino_lat})`
+
+        // Crear trayectoria si se proporcionó
+        let trayectoriaLineString = null
+        if (trayectoria_coords && Array.isArray(trayectoria_coords) && trayectoria_coords.length > 1) {
+            const coordsString = trayectoria_coords.map((coord) => `${coord.longitude} ${coord.latitude}`).join(",")
+            trayectoriaLineString = `LINESTRING(${coordsString})`
+        }
+
+        const query = `
+            INSERT INTO historial (
+                email_usuario,
+                origen,
+                destino,
+                trayectoria,
+                inicio_en,
+                estado,
+                distancia_km,
+                encontro_estacionamiento
+            ) VALUES (
+                $1,
+                ST_GeomFromText($2, 4326),
+                ST_GeomFromText($3, 4326),
+                ${trayectoriaLineString ? "ST_GeomFromText($4, 4326)" : "NULL"},
+                NOW(),
+                'completado',
+                $${trayectoriaLineString ? "5" : "4"},
+                true
+            ) RETURNING id_viaje
+        `
+
+        const params = [userEmail, origenPoint, destinoPoint]
+
+        if (trayectoriaLineString) {
+            params.push(trayectoriaLineString)
+        }
+
+        params.push(distancia_estimada || 0)
+
+        const result = await pool.query(query, params)
+        const viajeId = result.rows[0].id_viaje
+
+        res.json({
+            success: true,
+            message: "Viaje iniciado exitosamente",
+            viaje_id: viajeId,
+        })
+    } catch (error) {
+        console.error("Error iniciando viaje:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
+
+// 2. ENDPOINT: Actualizar distancia durante navegación
+app.put("/viajes/:viaje_id/actualizar-distancia", verifyToken, async (req, res) => {
+    try {
+        const { viaje_id } = req.params
+        const { distancia_recorrida } = req.body
+
+        const userEmail = req.userEmail
+
+        // Verificar que el viaje pertenece al usuario
+        const verificarQuery = `
+            SELECT id_viaje FROM historial 
+            WHERE id_viaje = $1 AND email_usuario = $2 AND estado = 'completado'
+        `
+
+        const verificarResult = await pool.query(verificarQuery, [viaje_id, userEmail])
+
+        if (verificarResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Viaje no encontrado o no pertenece al usuario",
+            })
+        }
+
+        // Actualizar distancia
+        const updateQuery = `
+            UPDATE historial 
+            SET distancia_km = $1
+            WHERE id_viaje = $2 AND email_usuario = $3
+        `
+
+        await pool.query(updateQuery, [distancia_recorrida, viaje_id, userEmail])
+
+        res.json({
+            success: true,
+            message: "Distancia actualizada exitosamente",
+        })
+    } catch (error) {
+        console.error("Error actualizando distancia:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
+
+// 3. ENDPOINT: Iniciar búsqueda de estacionamiento
+app.post("/viajes/:viaje_id/buscar-estacionamiento", verifyToken, async (req, res) => {
+    try {
+        const { viaje_id } = req.params
+        const { ubicacion_busqueda_lat, ubicacion_busqueda_lng } = req.body
+
+        const userEmail = req.userEmail
+
+        // Verificar que el viaje pertenece al usuario
+        const verificarQuery = `
+            SELECT id_viaje FROM historial 
+            WHERE id_viaje = $1 AND email_usuario = $2 AND estado = 'completado'
+        `
+
+        const verificarResult = await pool.query(verificarQuery, [viaje_id, userEmail])
+
+        if (verificarResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Viaje no encontrado o no pertenece al usuario",
+            })
+        }
+
+        // Crear punto de ubicación inicial de búsqueda
+        const ubicacionPoint = `POINT(${ubicacion_busqueda_lng} ${ubicacion_busqueda_lat})`
+
+        const updateQuery = `
+            UPDATE historial 
+            SET 
+                busqueda_iniciada = NOW(),
+                ubicacion_inicial_busqueda = ST_GeomFromText($1, 4326),
+                encontro_estacionamiento = false
+            WHERE id_viaje = $2 AND email_usuario = $3
+        `
+
+        await pool.query(updateQuery, [ubicacionPoint, viaje_id, userEmail])
+
+        res.json({
+            success: true,
+            message: "Búsqueda de estacionamiento iniciada",
+        })
+    } catch (error) {
+        console.error("Error iniciando búsqueda de estacionamiento:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
+
+// 4. ENDPOINT: Finalizar viaje
+app.post("/viajes/:viaje_id/finalizar", verifyToken, async (req, res) => {
+    try {
+        const { viaje_id } = req.params
+        const {
+            estado, // 'completado' o 'cancelado'
+            distancia_final,
+            encontro_lugar_busqueda, // true/false si encontró lugar durante búsqueda
+            ubicacion_final_lat,
+            ubicacion_final_lng,
+            id_mapeado, // ID de la calle de estacionamiento seleccionada
+            calle_estacionamiento, // Nombre de la calle
+        } = req.body
+
+        const userEmail = req.userEmail
+
+        // Verificar que el viaje pertenece al usuario
+        const verificarQuery = `
+            SELECT id_viaje, busqueda_iniciada, encontro_estacionamiento FROM historial 
+            WHERE id_viaje = $1 AND email_usuario = $2 AND estado = 'completado'
+        `
+
+        const verificarResult = await pool.query(verificarQuery, [viaje_id, userEmail])
+
+        if (verificarResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Viaje no encontrado o no pertenece al usuario",
+            })
+        }
+
+        const viaje = verificarResult.rows[0]
+
+        // Crear punto de ubicación final si se proporcionó
+        let ubicacionFinalPoint = null
+        if (ubicacion_final_lat && ubicacion_final_lng) {
+            ubicacionFinalPoint = `POINT(${ubicacion_final_lng} ${ubicacion_final_lat})`
+        }
+
+        // Construir query dinámicamente
+        let updateQuery = `
+            UPDATE historial 
+            SET 
+                fin_en = NOW(),
+                estado = $1,
+                distancia_km = $2
+        `
+
+        const params = [estado || "completado", distancia_final || 0]
+        let paramIndex = 3
+
+        // Si hubo búsqueda de estacionamiento, calcular tiempo_fin como INTERVAL
+        if (viaje.busqueda_iniciada) {
+            updateQuery += `, tiempo_fin = NOW() - busqueda_iniciada`
+        }
+
+        // Si se proporcionó ubicación final
+        if (ubicacionFinalPoint) {
+            updateQuery += `, ubicacion_final_busqueda = ST_GeomFromText($${paramIndex}, 4326)`
+            params.push(ubicacionFinalPoint)
+            paramIndex++
+        }
+
+        // Si se proporcionó información de estacionamiento
+        if (encontro_lugar_busqueda !== undefined) {
+            updateQuery += `, encontro_lugar_busqueda = $${paramIndex}`
+            params.push(encontro_lugar_busqueda)
+            paramIndex++
+        }
+
+        if (id_mapeado) {
+            updateQuery += `, id_mapeado = $${paramIndex}`
+            params.push(id_mapeado)
+            paramIndex++
+        }
+
+        if (calle_estacionamiento) {
+            updateQuery += `, calle_estacionamiento = $${paramIndex}`
+            params.push(calle_estacionamiento)
+            paramIndex++
+        }
+
+        updateQuery += ` WHERE id_viaje = $${paramIndex} AND email_usuario = $${paramIndex + 1}`
+        params.push(viaje_id, userEmail)
+
+        await pool.query(updateQuery, params)
+
+        res.json({
+            success: true,
+            message: "Viaje finalizado exitosamente",
+        })
+    } catch (error) {
+        console.error("Error finalizando viaje:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
+
+// 5. ENDPOINT: Obtener historial de viajes con datos de calles de estacionamiento
+app.get("/viajes/historial", verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.userEmail
+        const { limite = 20, pagina = 1 } = req.query
+
+        const offset = (pagina - 1) * limite
+
+        const query = `
+            SELECT 
+                h.id_viaje,
+                ST_Y(h.origen) as origen_lat,
+                ST_X(h.origen) as origen_lng,
+                ST_Y(h.destino) as destino_lat,
+                ST_X(h.destino) as destino_lng,
+                h.inicio_en,
+                h.fin_en,
+                h.estado,
+                h.distancia_km,
+                h.encontro_estacionamiento,
+                h.busqueda_iniciada,
+                EXTRACT(EPOCH FROM h.tiempo_fin)/60 as tiempo_busqueda_minutos,
+                ST_Y(h.ubicacion_inicial_busqueda) as ubicacion_inicial_busqueda_lat,
+                ST_X(h.ubicacion_inicial_busqueda) as ubicacion_inicial_busqueda_lng,
+                ST_Y(h.ubicacion_final_busqueda) as ubicacion_final_busqueda_lat,
+                ST_X(h.ubicacion_final_busqueda) as ubicacion_final_busqueda_lng,
+                h.encontro_lugar_busqueda,
+                h.id_mapeado,
+                h.calle_estacionamiento,
+                -- Datos de la calle de estacionamiento desde tabla mapeado
+                m.restriction as tipo_estacionamiento,
+                m.latlngs as coordenadas_calle
+            FROM historial h
+            LEFT JOIN mapeado m ON h.id_mapeado = m.id
+            WHERE h.email_usuario = $1 AND h.estado IN ('completado', 'cancelado')
+            ORDER BY h.inicio_en DESC
+            LIMIT $2 OFFSET $3
+        `
+
+        const result = await pool.query(query, [userEmail, limite, offset])
+
+        // Contar total de viajes
+        const countQuery = `
+            SELECT COUNT(*) as total 
+            FROM historial 
+            WHERE email_usuario = $1 AND estado IN ('completado', 'cancelado')
+        `
+
+        const countResult = await pool.query(countQuery, [userEmail])
+        const total = Number.parseInt(countResult.rows[0].total)
+
+        res.json({
+            success: true,
+            viajes: result.rows,
+            total: total,
+            pagina: Number.parseInt(pagina),
+            total_paginas: Math.ceil(total / limite),
+        })
+    } catch (error) {
+        console.error("Error obteniendo historial:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
+
+// 6. ENDPOINT: Obtener estadísticas de estacionamiento por usuario
+app.get("/viajes/estadisticas-estacionamiento", verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.userEmail
+
+        const query = `
+            SELECT 
+                COUNT(*) as total_viajes,
+                COUNT(CASE WHEN encontro_estacionamiento = false THEN 1 END) as viajes_con_busqueda,
+                COUNT(CASE WHEN encontro_estacionamiento = true THEN 1 END) as viajes_sin_busqueda,
+                COUNT(CASE WHEN encontro_lugar_busqueda = true THEN 1 END) as busquedas_exitosas,
+                COUNT(CASE WHEN encontro_lugar_busqueda = false THEN 1 END) as busquedas_fallidas,
+                AVG(EXTRACT(EPOCH FROM tiempo_fin)/60) as tiempo_promedio_busqueda_minutos,
+                -- Calles más utilizadas
+                array_agg(DISTINCT calle_estacionamiento) FILTER (WHERE calle_estacionamiento IS NOT NULL) as calles_utilizadas,
+                -- Tipos de estacionamiento más usados
+                array_agg(DISTINCT m.restriction) FILTER (WHERE m.restriction IS NOT NULL) as tipos_estacionamiento_usados
+            FROM historial h
+            LEFT JOIN mapeado m ON h.id_mapeado = m.id
+            WHERE h.email_usuario = $1 AND h.estado = 'completado'
+        `
+
+        const result = await pool.query(query, [userEmail])
+
+        res.json({
+            success: true,
+            estadisticas: result.rows[0],
+        })
+    } catch (error) {
+        console.error("Error obteniendo estadísticas:", error)
+        res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+        })
+    }
+})
 
 app.listen(PORT, () => {
     console.log(`Servidor escuchando en el puerto ${PORT}`);

@@ -20,6 +20,8 @@ import MapViewDirections from "react-native-maps-directions"
 import { useRoute, useNavigation } from "@react-navigation/native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import Config from "react-native-config"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import axios from "axios"
 
 const { width, height } = Dimensions.get("window")
 
@@ -37,9 +39,11 @@ const ConfirmarRecorridoScreen = () => {
     const [distance, setDistance] = useState(null)
     const [duration, setDuration] = useState(null)
     const [routeDetails, setRouteDetails] = useState([])
+    const [routeCoordinates, setRouteCoordinates] = useState([])
     const [loadingRoute, setLoadingRoute] = useState(true)
     const [originAddress, setOriginAddress] = useState("Obteniendo ubicación...")
     const [destinationAddress, setDestinationAddress] = useState("Cargando destino...")
+    const [isStartingTrip, setIsStartingTrip] = useState(false)
 
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
@@ -99,6 +103,54 @@ const ConfirmarRecorridoScreen = () => {
         } catch (error) {
             console.error("Error getting address:", error)
             return "Error al obtener dirección"
+        }
+    }
+
+    // Función para iniciar viaje en la base de datos
+    const iniciarViajeEnBD = async (origenCoords, destinoCoords, trayectoriaCoords, distanciaEstimada) => {
+        try {
+            const token = await AsyncStorage.getItem("authToken")
+
+            if (!token) {
+                Alert.alert("Error", "No se encontró token de autenticación")
+                return null
+            }
+
+            const response = await axios.post(
+                `${Config.API_URL}/viajes/iniciar`,
+                {
+                    origen_lat: origenCoords.latitude,
+                    origen_lng: origenCoords.longitude,
+                    destino_lat: destinoCoords.latitude,
+                    destino_lng: destinoCoords.longitude,
+                    trayectoria_coords: trayectoriaCoords,
+                    distancia_estimada: distanciaEstimada,
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    timeout: 10000,
+                },
+            )
+
+            if (response.data.success) {
+                return response.data.viaje_id
+            } else {
+                throw new Error(response.data.message || "Error iniciando viaje")
+            }
+        } catch (error) {
+            console.error("Error iniciando viaje en BD:", error)
+
+            if (error.response?.status === 401) {
+                Alert.alert("Sesión expirada", "Por favor, inicia sesión nuevamente")
+                navigation.navigate("LoginScreen")
+                return null
+            }
+
+            Alert.alert("Error", "No se pudo iniciar el viaje. Inténtalo de nuevo.")
+            return null
         }
     }
 
@@ -202,7 +254,7 @@ const ConfirmarRecorridoScreen = () => {
         navigation.navigate("MenuScreen")
     }
 
-    const handleStart = () => {
+    const handleStart = async () => {
         if (loadingRoute) {
             Alert.alert("Calculando ruta", "Por favor, espere a que se calcule la ruta.")
             return
@@ -213,14 +265,28 @@ const ConfirmarRecorridoScreen = () => {
             return
         }
 
-        // Permitir navegación incluso si no hay routeDetails (para misma ubicación)
-        animateButton(() => {
-            navigation.navigate("NavegacionScreen", {
-                origin,
-                destinationLocation,
-                routeDetails: routeDetails || [],
-            })
-        })
+        setIsStartingTrip(true)
+
+        try {
+            // Iniciar viaje en la base de datos
+            const viajeId = await iniciarViajeEnBD(origin, destinationLocation, routeCoordinates, distance)
+
+            if (viajeId) {
+                // Navegar a la pantalla de navegación con el ID del viaje
+                animateButton(() => {
+                    navigation.navigate("NavegacionScreen", {
+                        origin,
+                        destinationLocation,
+                        routeDetails: routeDetails || [],
+                        viajeId: viajeId, // Pasar el ID del viaje
+                    })
+                })
+            }
+        } catch (error) {
+            console.error("Error al iniciar viaje:", error)
+        } finally {
+            setIsStartingTrip(false)
+        }
     }
 
     // Validar que tenemos los datos necesarios
@@ -272,6 +338,11 @@ const ConfirmarRecorridoScreen = () => {
                                 setDistance(result.distance || 0)
                                 setDuration(result.duration || 0)
                                 setRouteDetails((result.legs && result.legs[0] && result.legs[0].steps) || [])
+
+                                // Extraer coordenadas de la ruta para guardar en BD
+                                if (result.coordinates && result.coordinates.length > 0) {
+                                    setRouteCoordinates(result.coordinates)
+                                }
                             }
                             setLoadingRoute(false)
                         }}
@@ -281,6 +352,7 @@ const ConfirmarRecorridoScreen = () => {
                             setDistance(0)
                             setDuration(0)
                             setRouteDetails([])
+                            setRouteCoordinates([])
                             setLoadingRoute(false)
                         }}
                     />
@@ -369,10 +441,10 @@ const ConfirmarRecorridoScreen = () => {
                     )}
 
                     {/* Indicador de carga */}
-                    {loadingRoute && (
+                    {(loadingRoute || isStartingTrip) && (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="small" color="#FF6B35" />
-                            <Text style={styles.loadingText}>Calculando ruta...</Text>
+                            <Text style={styles.loadingText}>{isStartingTrip ? "Iniciando viaje..." : "Calculando ruta..."}</Text>
                         </View>
                     )}
                 </View>
@@ -385,13 +457,13 @@ const ConfirmarRecorridoScreen = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        style={[styles.startButton, loadingRoute && styles.startButtonDisabled]}
+                        style={[styles.startButton, (loadingRoute || isStartingTrip) && styles.startButtonDisabled]}
                         onPress={handleStart}
-                        disabled={loadingRoute}
+                        disabled={loadingRoute || isStartingTrip}
                         activeOpacity={0.8}
                     >
                         <Icon name="navigation" size={wp(4)} color="#FFFFFF" />
-                        <Text style={styles.startButtonText}>Empezar</Text>
+                        <Text style={styles.startButtonText}>{isStartingTrip ? "Iniciando..." : "Empezar"}</Text>
                     </TouchableOpacity>
                 </Animated.View>
             </Animated.View>

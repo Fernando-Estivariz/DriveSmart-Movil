@@ -18,6 +18,7 @@ import MapaEstacionamientos from './src/screens/MapaEstacionamientos';
 import MapaPlacas from './src/screens/MapaPlacas';
 import SeleccionarUbicacionScreen from './src/screens/SeleccionarUbicacionScreen';
 import HowToUseScreen from './src/screens/HowToUseScreen';
+import EstadisticasScreen from './src/screens/EstadisticasScreen';
 
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
                 <Stack.Screen name='MapaPlacas' component={MapaPlacas} />
                 <Stack.Screen name='SeleccionarUbicacionScreen' component={SeleccionarUbicacionScreen} />
                 <Stack.Screen name='HowToUseScreen' component={HowToUseScreen} />
+                <Stack.Screen name='EstadisticasScreen' component={EstadisticasScreen} />
             </Stack.Navigator>
         );
     }
