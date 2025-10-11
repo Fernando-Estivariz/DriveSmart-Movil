@@ -991,6 +991,10 @@ app.get("/viajes/estadisticas-estacionamiento", verifyToken, async (req, res) =>
     }
 })
 
+app.get("/", (req, res) => {
+    res.send("DriveSmart Backend funcionando ...");
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
