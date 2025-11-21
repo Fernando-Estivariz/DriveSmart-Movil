@@ -193,7 +193,7 @@ const InvalidCodeScreen = ({ route, navigation }) => {
                 const next = prev + 1
                 if (next >= 3) {
                     Alert.alert(
-                        "❌ Demasiados Intentos",
+                        "Demasiados Intentos",
                         "Has excedido el número máximo de intentos. Solicita un nuevo código.",
                         [
                             {
@@ -231,7 +231,7 @@ const InvalidCodeScreen = ({ route, navigation }) => {
             setTimeLeft(60)
             setAttempts(0)
             setError("")
-            Alert.alert("📩 Código reenviado", "Revisa tu correo")
+            Alert.alert("Código reenviado", "Revisa tu correo")
         } catch (err) {
             const msg = err?.response?.data?.message || "No se pudo reenviar el código"
             setError(msg)

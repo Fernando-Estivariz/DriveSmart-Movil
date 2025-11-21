@@ -273,7 +273,7 @@ const EstadisticasScreen = ({ navigation }) => {
                             ]}
                         />
                         <View style={styles.pieCenter}>
-                            <Text style={styles.pieCenterText}>{total}</Text>
+                            <Text style={styles.pieCenterText }>{total}</Text>
                             <Text style={styles.pieCenterLabel}>Viajes</Text>
                         </View>
                     </View>
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
         height: wp(40),
         borderRadius: wp(20),
         position: "relative",
-        backgroundColor: "#E74C3C",
+        backgroundColor: "#22ed9cff",
         overflow: "hidden",
     },
     pieSlice: {
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#27AE60",
     },
     canceladosSlice: {
-        backgroundColor: "#E74C3C",
+        backgroundColor: "#FF6B35",
     },
     pieCenter: {
         position: "absolute",

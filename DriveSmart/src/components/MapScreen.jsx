@@ -346,7 +346,7 @@ export default function MapScreen({ navigation }) {
             Geolocation.getCurrentPosition(
                 handleLocationUpdate,
                 (error) => {
-                    console.error("❌ Error al obtener ubicación inicial:", error)
+                    console.error("Error al obtener ubicación inicial:", error)
                 },
                 {
                     enableHighAccuracy: true,
@@ -359,7 +359,7 @@ export default function MapScreen({ navigation }) {
             watchIdRef.current = Geolocation.watchPosition(
                 handleLocationUpdate,
                 (error) => {
-                    console.error("❌ Error en seguimiento de ubicación:", error)
+                    console.error("Error en seguimiento de ubicación:", error)
                 },
                 {
                     enableHighAccuracy: true,

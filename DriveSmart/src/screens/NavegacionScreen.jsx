@@ -210,42 +210,35 @@ const getEndCoordsForStreetName = (selectedParkingSpot, currentLocation) => {
 
 const obtenerNombreCalle = async (latitude, longitude) => {
     try {
-        console.log("[v0] Iniciando reverse geocoding para:", latitude, longitude)
-        console.log("[v0] Google Maps API Key disponible:", !!Config.GOOGLE_MAPS_APIKEY)
-
         const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_MAPS_APIKEY}&language=es`
-        console.log("[v0] URL de geocoding:", url.replace(Config.GOOGLE_MAPS_APIKEY, "API_KEY_HIDDEN"))
 
         const response = await fetch(url)
-        console.log("[v0] Response status:", response.status)
+        console.log("Response status:", response.status)
 
         const data = await response.json()
-        console.log("[v0] Geocoding response:", JSON.stringify(data, null, 2))
+        console.log("Geocoding response:", JSON.stringify(data, null, 2))
 
         if (data.results && data.results.length > 0) {
             // Buscar el componente de ruta (street)
             const addressComponents = data.results[0].address_components
-            console.log("[v0] Address components:", addressComponents)
+            console.log("Address components:", addressComponents)
 
             const streetComponent = addressComponents.find(
                 (component) => component.types.includes("route") || component.types.includes("street_address"),
             )
 
             if (streetComponent) {
-                console.log("[v0] Street component encontrado:", streetComponent.long_name)
+                console.log("Street component encontrado:", streetComponent.long_name)
                 return streetComponent.long_name
             }
 
             // Si no encuentra ruta específica, usar la dirección formateada
             const fallbackName = data.results[0].formatted_address.split(",")[0]
-            console.log("[v0] Usando dirección formateada como fallback:", fallbackName)
             return fallbackName
         }
 
-        console.log("[v0] No se encontraron resultados en geocoding")
         return "Calle no identificada"
     } catch (error) {
-        console.log("[v0] Error obteniendo nombre de calle:", error)
         return "Calle no identificada"
     }
 }
@@ -368,14 +361,12 @@ const NavegacionScreen = () => {
         try {
             const token = await AsyncStorage.getItem("authToken")
             if (!token || !viajeId) {
-                console.log("[v0] No se puede finalizar: token o viajeId faltante")
                 return
             }
 
             // Si no viene calle, intenta resolverla con las coords finales
             let calle = datosFinalizacion.calle_estacionamiento || null
             if (!calle && datosFinalizacion.ubicacion_final_lat && datosFinalizacion.ubicacion_final_lng) {
-                console.log("[v0] Resolviendo nombre de calle con coordenadas finales")
                 calle = await obtenerNombreCalle(datosFinalizacion.ubicacion_final_lat, datosFinalizacion.ubicacion_final_lng)
             }
 
@@ -404,7 +395,6 @@ const NavegacionScreen = () => {
                 calle_estacionamiento: calle || "Calle no identificada",
             }
 
-            console.log("[v0] Enviando datos a BD:", datosValidados)
 
             await axios.post(`${Config.API_URL}/viajes/${viajeId}/finalizar`, datosValidados, {
                 headers: {
@@ -414,7 +404,6 @@ const NavegacionScreen = () => {
                 timeout: 10000,
             })
 
-            console.log("[v0] Viaje finalizado exitosamente en BD")
         } catch (error) {
             console.error("Error finalizando viaje en BD:", error)
             if (error.response) {
@@ -1031,7 +1020,6 @@ const NavegacionScreen = () => {
     // Función para mostrar la pregunta de estacionamiento
     const showParkingQuestion = () => {
         try {
-            console.log("[v0] Mostrando modal de estacionamiento encontrado")
             setShowParkingModal(true)
 
             // Animaciones del modal
@@ -1055,27 +1043,23 @@ const NavegacionScreen = () => {
 
     const searchParkingDirectly = async () => {
         try {
-            console.log("[v0] Iniciando búsqueda de estacionamiento...")
             setIsSearchingParking(true)
             setShowArrivalModal(false)
 
             if (!currentLocation || !currentLocation.latitude || !currentLocation.longitude) {
-                console.error("[v0] Ubicación actual no válida")
+                console.error("Ubicación actual no válida")
                 setIsSearchingParking(false)
                 return
             }
 
             // Registrar búsqueda en BD de manera no bloqueante
-            console.log("[v0] Registrando búsqueda en BD...")
             iniciarBusquedaEstacionamientoEnBD(currentLocation).catch((error) => {
-                console.error("[v0] Error en BD (no crítico):", error)
+                console.error("Error en BD (no crítico):", error)
             })
 
-            console.log("[v0] Buscando estacionamientos cercanos...")
             const nearbyParking = await findNearbyParkingStreets(currentLocation, 200)
 
             if (nearbyParking && nearbyParking.length > 0) {
-                console.log("[v0] Estacionamientos encontrados:", nearbyParking.length)
 
                 const validParking = nearbyParking.filter(
                     (parking) =>
@@ -1090,13 +1074,12 @@ const NavegacionScreen = () => {
                 )
 
                 if (validParking.length === 0) {
-                    console.error("[v0] No hay estacionamientos válidos")
+                    console.error("No hay estacionamientos válidos")
                     setIsSearchingParking(false)
                     Alert.alert("Error", "Los datos de estacionamiento no son válidos. Intenta nuevamente.")
                     return
                 }
 
-                console.log("[v0] Estacionamientos válidos:", validParking.length)
 
                 setAllNearbyParking(validParking)
                 const topParking = validParking.slice(0, 5)
@@ -1120,10 +1103,8 @@ const NavegacionScreen = () => {
                         useNativeDriver: true,
                     }).start()
 
-                    console.log("[v0] Vista de estacionamientos configurada correctamente")
                 }, 100)
             } else {
-                console.log("[v0] No se encontraron estacionamientos")
                 setIsSearchingParking(false)
                 Alert.alert(
                     "Sin estacionamientos",
@@ -1135,7 +1116,7 @@ const NavegacionScreen = () => {
                 )
             }
         } catch (error) {
-            console.error("[v0] Error en búsqueda de estacionamiento:", error)
+            console.error("Error en búsqueda de estacionamiento:", error)
             setIsSearchingParking(false)
             Alert.alert("Error", "Hubo un problema al buscar estacionamientos. ¿Deseas reintentar?", [
                 { text: "Reintentar", onPress: () => searchParkingDirectly() },
@@ -1146,11 +1127,10 @@ const NavegacionScreen = () => {
 
     const handleParkingResponse = async (foundParking) => {
         try {
-            console.log("[v0] Respuesta de estacionamiento:", foundParking ? "Encontrado" : "No encontrado")
 
             // Validar datos necesarios antes de proceder
             if (!currentLocation) {
-                console.error("[v0] Error: currentLocation no disponible")
+                console.error("Error: currentLocation no disponible")
                 Alert.alert("Error", "No se pudo obtener la ubicación actual")
                 return
             }
@@ -1159,9 +1139,7 @@ const NavegacionScreen = () => {
                 let nombreCalle = "Calle no identificada"
                 const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
                 if (endCoords) {
-                    console.log("[v0] Obteniendo nombre de calle para coordenadas:", endCoords.lat, endCoords.lng)
                     nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
-                    console.log("[v0] Nombre de calle obtenido:", nombreCalle)
                 }
 
                 // Usuario encontró estacionamiento, finalizar viaje con datos completos
@@ -1175,7 +1153,6 @@ const NavegacionScreen = () => {
                     calle_estacionamiento: nombreCalle,
                 }
 
-                console.log("[v0] Finalizando viaje con estacionamiento encontrado")
                 await finalizarViajeEnBD(datosFinalizacion)
 
                 closeParkingModal()
@@ -1197,9 +1174,7 @@ const NavegacionScreen = () => {
                             let nombreCalle = "Calle no identificada"
                             const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
                             if (endCoords) {
-                                console.log("[v0] Obteniendo nombre de calle para finalización sin encontrar")
                                 nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
-                                console.log("[v0] Nombre de calle para finalización:", nombreCalle)
                             }
 
                             const datosFinalizacion = {
@@ -1212,7 +1187,7 @@ const NavegacionScreen = () => {
                                 calle_estacionamiento: nombreCalle,
                             }
 
-                            console.log("[v0] Finalizando viaje sin encontrar estacionamiento")
+                            console.log("Finalizando viaje sin encontrar estacionamiento")
                             await finalizarViajeEnBD(datosFinalizacion)
                             navigation.navigate("Home")
                         },
@@ -1221,7 +1196,7 @@ const NavegacionScreen = () => {
                         text: "Buscar Otro",
                         onPress: () => {
                             // Mantener en modo preview para seleccionar otro estacionamiento
-                            console.log("[v0] Usuario quiere buscar otro estacionamiento")
+                            console.log("Usuario quiere buscar otro estacionamiento")
                         },
                     },
                 ])
@@ -1298,7 +1273,6 @@ const NavegacionScreen = () => {
 
     const selectParkingSpot = (spot) => {
         try {
-            console.log("[v0] Estacionamiento seleccionado:", spot.streetName)
             setSelectedParkingSpot(spot)
             setNavigationMode("parking")
             setHasArrived(false)
@@ -1385,7 +1359,6 @@ const NavegacionScreen = () => {
         const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
         let nombreCalle = selectedParkingSpot?.streetName || null
         if (!nombreCalle && endCoords) {
-            console.log("[v0] Resolviendo nombre de calle para confirmParkingFound")
             nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
         }
 
@@ -1467,18 +1440,15 @@ const NavegacionScreen = () => {
                 const currentDestination =
                     navigationMode === "parking" && selectedParkingSpot ? selectedParkingSpot.midPoint : destinationLocation
 
-                console.log("[v0] Verificando llegada - Modo:", navigationMode, "Destino:", currentDestination)
 
                 // Verificar llegada con lógica mejorada
                 const arrived = checkArrival(currentLocation, currentDestination, navigationMode)
 
                 if (arrived && !hasArrived) {
-                    console.log("[v0] ¡Llegada detectada! Modo:", navigationMode)
                     setHasArrived(true)
 
                     if (navigationMode === "parking" && selectedParkingSpot) {
                         // Llegó al estacionamiento seleccionado
-                        console.log("[v0] Llegada al estacionamiento seleccionado:", selectedParkingSpot.streetName)
                         if (isVoiceEnabled) {
                             speakInstruction("Has llegado al área de estacionamiento")
                         }
@@ -1636,7 +1606,7 @@ const NavegacionScreen = () => {
     const finalizarViaje = async (foundParking) => {
         try {
             if (!currentLocation) {
-                console.error("[v0] Error: currentLocation no disponible")
+                console.error("Error: currentLocation no disponible")
                 Alert.alert("Error", "No se pudo obtener la ubicación actual")
                 return
             }
@@ -1645,7 +1615,7 @@ const NavegacionScreen = () => {
                 let nombreCalle = "Calle no identificada"
                 if (selectedParkingSpot?.midPoint?.latitude && selectedParkingSpot?.midPoint?.longitude) {
                     console.log(
-                        "[v0] Obteniendo nombre de calle para coordenadas:",
+                        "Obteniendo nombre de calle para coordenadas:",
                         selectedParkingSpot.midPoint.latitude,
                         selectedParkingSpot.midPoint.longitude,
                     )
@@ -1653,7 +1623,6 @@ const NavegacionScreen = () => {
                         selectedParkingSpot.midPoint.latitude,
                         selectedParkingSpot.midPoint.longitude,
                     )
-                    console.log("[v0] Nombre de calle obtenido:", nombreCalle)
                 }
 
                 // Usuario encontró estacionamiento, finalizar viaje con datos completos
@@ -1667,7 +1636,6 @@ const NavegacionScreen = () => {
                     calle_estacionamiento: nombreCalle,
                 }
 
-                console.log("[v0] Finalizando viaje con estacionamiento encontrado")
                 await finalizarViajeEnBD(datosFinalizacion)
 
                 closeParkingModal()
@@ -1688,12 +1656,10 @@ const NavegacionScreen = () => {
                         onPress: async () => {
                             let nombreCalle = "Calle no identificada"
                             if (selectedParkingSpot?.midPoint?.latitude && selectedParkingSpot?.midPoint?.longitude) {
-                                console.log("[v0] Obteniendo nombre de calle para finalización sin encontrar")
                                 nombreCalle = await obtenerNombreCalle(
                                     selectedParkingSpot.midPoint.latitude,
                                     selectedParkingSpot.midPoint.longitude,
                                 )
-                                console.log("[v0] Nombre de calle para finalización:", nombreCalle)
                             }
 
                             const datosFinalizacion = {
@@ -1706,7 +1672,6 @@ const NavegacionScreen = () => {
                                 calle_estacionamiento: nombreCalle,
                             }
 
-                            console.log("[v0] Finalizando viaje sin encontrar estacionamiento")
                             await finalizarViajeEnBD(datosFinalizacion)
                             navigation.navigate("Home")
                         },
@@ -1715,7 +1680,7 @@ const NavegacionScreen = () => {
                         text: "Buscar Otro",
                         onPress: () => {
                             // Mantener en modo preview para seleccionar otro estacionamiento
-                            console.log("[v0] Usuario quiere buscar otro estacionamiento")
+                            console.log("Usuario quiere buscar otro estacionamiento")
                         },
                     },
                 ])
@@ -1784,7 +1749,7 @@ const NavegacionScreen = () => {
                     allNearbyParking.map((parking, index) => {
                         // Validar que el estacionamiento tenga datos válidos
                         if (!parking || !parking.id || !parking.midPoint || !parking.latlngs || !Array.isArray(parking.latlngs)) {
-                            console.warn(`[v0] Estacionamiento inválido en índice ${index}:`, parking)
+                            console.warn(`Estacionamiento inválido en índice ${index}:`, parking)
                             return null
                         }
 
@@ -1822,7 +1787,7 @@ const NavegacionScreen = () => {
                                 </View>
                             )
                         } catch (renderError) {
-                            console.error(`[v0] Error renderizando estacionamiento ${index}:`, renderError)
+                            console.error(`Error renderizando estacionamiento ${index}:`, renderError)
                             return null
                         }
                     })}

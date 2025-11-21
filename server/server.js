@@ -140,7 +140,7 @@ app.post('/auth/google', async (req, res) => {
 
         const email = payload.email
 
-        // 2) Buscar en tu BD
+        // 2) Buscar en BD
         const existing = await pool.query('SELECT * FROM user_mobile WHERE email = $1', [email])
         let user = existing.rows[0]
 

@@ -34,7 +34,7 @@ const HowToUseScreen = ({ navigation }) => {
     const tutorialSteps = [
         {
             id: 1,
-            title: "🚗 Planifica tu Ruta",
+            title: "Planifica tu Ruta",
             subtitle: "Navegación Inteligente",
             description: "Encuentra la mejor ruta a tu destino evitando tráfico y restricciones vehiculares.",
             icon: "directions",
@@ -46,11 +46,11 @@ const HowToUseScreen = ({ navigation }) => {
                 "Revisa la ruta sugerida y el tiempo estimado",
                 "Presiona 'Empezar' para iniciar la navegación",
             ],
-            tips: "💡 La app considera restricciones de placas y tráfico en tiempo real",
+            tips: "La app considera restricciones de placas y tráfico en tiempo real",
         },
         {
             id: 2,
-            title: "🚫 Restricción de Placas",
+            title: "Restricción de Placas",
             subtitle: "Evita Multas",
             description: "Consulta qué días no puedes circular según el último número de tu placa vehicular.",
             icon: "no-crash",
@@ -62,11 +62,11 @@ const HowToUseScreen = ({ navigation }) => {
                 "Verifica si hoy puedes circular",
                 "Planifica tus viajes según las restricciones",
             ],
-            tips: "⏰ Las restricciones aplican de 07:00 a 19:00 horas",
+            tips: "Las restricciones aplican de 07:00 a 19:00 horas",
         },
         {
             id: 3,
-            title: "🅿️ Encuentra Estacionamientos",
+            title: "Encuentra Estacionamientos",
             subtitle: "Aparca sin Problemas",
             description: "Localiza zonas de estacionamiento permitido, tarifado y prohibido en la ciudad.",
             icon: "local-parking",
@@ -78,11 +78,11 @@ const HowToUseScreen = ({ navigation }) => {
                 "Rojo = Prohibido, Azul = Tarifado, Sin línea = Libre",
                 "Planifica dónde aparcar antes de llegar",
             ],
-            tips: "🕐 Los horarios de restricción varían según la zona",
+            tips: "Los horarios de restricción varían según la zona",
         },
         {
             id: 4,
-            title: "👤 Personaliza tu Perfil",
+            title: "Personaliza tu Perfil",
             subtitle: "Mantén tus Datos Actualizados",
             description: "Actualiza tu información personal y los datos de tu vehículo para una mejor experiencia.",
             icon: "person",
@@ -94,11 +94,11 @@ const HowToUseScreen = ({ navigation }) => {
                 "Modifica el número de placa de tu vehículo",
                 "Guarda los cambios para sincronizar",
             ],
-            tips: "🔒 Tus datos están protegidos y encriptados",
+            tips: "Tus datos están protegidos y encriptados",
         },
         {
             id: 5,
-            title: "🎯 Consejos Generales",
+            title: "Consejos Generales",
             subtitle: "Aprovecha al Máximo la App",
             description: "Sigue estos consejos para tener la mejor experiencia con DriveSmart.",
             icon: "lightbulb-outline",
@@ -110,7 +110,7 @@ const HowToUseScreen = ({ navigation }) => {
                 "Consulta las restricciones antes de salir",
                 "Usa el modo navegación para rutas largas",
             ],
-            tips: "📱 La app funciona mejor con conexión a internet",
+            tips: "La app funciona mejor con conexión a internet",
         },
     ]
 

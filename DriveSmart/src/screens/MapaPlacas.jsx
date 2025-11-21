@@ -17,9 +17,10 @@ import MapPlacas from "../components/MapPlacasScreen"
 
 const { width, height } = Dimensions.get("window")
 
-// Responsive helper functions
 const wp = (percentage) => (width * percentage) / 100
 const hp = (percentage) => (height * percentage) / 100
+const isSmallDevice = width < 375
+const isMediumDevice = width >= 375 && width < 414
 
 const MapaPlacas = ({ navigation }) => {
     const [isPanelExpanded, setIsPanelExpanded] = useState(true)
@@ -65,7 +66,7 @@ const MapaPlacas = ({ navigation }) => {
                     onPress={() => navigation.navigate("MenuScreen")}
                     activeOpacity={0.8}
                 >
-                    <Icon name="menu" size={wp(6)} color="#FFFFFF" />
+                    <Icon name="menu" size={wp(6.5)} color="#FFFFFF" />
                 </TouchableOpacity>
 
                 <Image source={require("../../assets/DRIVESMART.png")} style={styles.logo} />
@@ -80,11 +81,11 @@ const MapaPlacas = ({ navigation }) => {
             )}
 
             {/* Panel de información mejorado */}
-            <View style={[styles.descriptionContainer, { height: isPanelExpanded ? hp(45) : hp(12) }]}>
+            <View style={[styles.descriptionContainer, { height: isPanelExpanded ? hp(38) : hp(10) }]}>
                 {/* Header del panel con botón de colapsar */}
                 <View style={styles.panelHeader}>
                     <View style={styles.titleSection}>
-                        <Icon name="no-crash" size={wp(6)} color="#FF6B35" />
+                        <Icon name="no-crash" size={isSmallDevice ? wp(5.5) : wp(6)} color="#FF6B35" />
                         <View style={styles.titleTexts}>
                             <Text style={styles.title}>Restricción Vehicular</Text>
                             <Text style={styles.subTitle}>Último Número de la Placa</Text>
@@ -93,11 +94,15 @@ const MapaPlacas = ({ navigation }) => {
 
                     <View style={styles.headerActions}>
                         <View style={styles.timeContainer}>
-                            <Icon name="schedule" size={wp(4)} color="#FF6B35" />
+                            <Icon name="schedule" size={isSmallDevice ? wp(3.5) : wp(4)} color="#FF6B35" />
                             <Text style={styles.time}>07:00 - 19:00</Text>
                         </View>
                         <TouchableOpacity style={styles.collapseButton} onPress={togglePanel} activeOpacity={0.7}>
-                            <Icon name={isPanelExpanded ? "keyboard-arrow-down" : "keyboard-arrow-up"} size={wp(6)} color="#FF6B35" />
+                            <Icon
+                                name={isPanelExpanded ? "keyboard-arrow-down" : "keyboard-arrow-up"}
+                                size={wp(6.5)}
+                                color="#FF6B35"
+                            />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -109,13 +114,11 @@ const MapaPlacas = ({ navigation }) => {
                         {currentDay.restriction && (
                             <View style={styles.currentRestrictionContainer}>
                                 <View style={styles.currentRestrictionHeader}>
-                                    <Icon name="today" size={wp(5)} color="#FF6B35" />
-                                    <Text style={styles.currentRestrictionTitle}>Restricción de Hoy - {currentDay.day}</Text>
+                                    <Icon name="today" size={isSmallDevice ? wp(4.5) : wp(5)} color="#FF6B35" />
+                                    <Text style={styles.currentRestrictionTitle}>Hoy - {currentDay.day}</Text>
                                 </View>
                                 <View style={styles.currentRestrictionContent}>
-                                    <Text style={styles.currentRestrictionText}>
-                                        Placas terminadas en {currentDay.restriction.numbers}
-                                    </Text>
+                                    <Text style={styles.currentRestrictionText}>Placas: {currentDay.restriction.numbers}</Text>
                                     <Image source={currentDay.restriction.image} style={styles.currentPlateImage} />
                                 </View>
                             </View>
@@ -231,7 +234,7 @@ const styles = StyleSheet.create({
     },
     header: {
         position: "absolute",
-        top: Platform.OS === "ios" ? hp(6) : hp(4),
+        top: Platform.OS === "ios" ? hp(5.5) : hp(3.5),
         left: 0,
         right: 0,
         flexDirection: "row",
@@ -243,23 +246,23 @@ const styles = StyleSheet.create({
     menuButton: {
         backgroundColor: "rgba(0,0,0,0.7)",
         borderRadius: wp(2),
-        padding: wp(2),
+        padding: wp(2.5),
     },
     logo: {
-        width: wp(12),
-        height: wp(12),
-        borderRadius: wp(6),
+        width: wp(11),
+        height: wp(11),
+        borderRadius: wp(5.5),
     },
     floatingButton: {
         position: "absolute",
-        bottom: hp(15),
+        bottom: hp(13),
         right: wp(4),
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "#FF6B35",
         borderRadius: wp(6),
         paddingHorizontal: wp(4),
-        paddingVertical: wp(2),
+        paddingVertical: wp(2.5),
         shadowColor: "#000",
         shadowOffset: {
             width: 0,
@@ -272,9 +275,9 @@ const styles = StyleSheet.create({
     },
     floatingButtonText: {
         color: "#FFFFFF",
-        fontSize: wp(3.2),
+        fontSize: isSmallDevice ? wp(3) : wp(3.2),
         fontWeight: "600",
-        marginLeft: wp(1),
+        marginLeft: wp(1.5),
     },
     descriptionContainer: {
         position: "absolute",
@@ -297,7 +300,8 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: wp(4),
+        paddingHorizontal: wp(3.5),
+        paddingVertical: wp(2.5),
         borderBottomWidth: 1,
         borderBottomColor: "#E1E8ED",
     },
@@ -305,48 +309,52 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         flex: 1,
+        marginRight: wp(2),
     },
     titleTexts: {
-        marginLeft: wp(3),
+        marginLeft: wp(2),
+        flex: 1,
     },
     title: {
-        fontSize: wp(4.5),
+        fontSize: isSmallDevice ? wp(3.8) : wp(4.2),
         fontWeight: "bold",
         color: "#2C3E50",
     },
     subTitle: {
-        fontSize: wp(3.2),
+        fontSize: isSmallDevice ? wp(2.8) : wp(3),
         color: "#7F8C8D",
         marginTop: 2,
     },
     headerActions: {
         flexDirection: "row",
         alignItems: "center",
-        gap: wp(2),
+        gap: wp(1.5),
     },
     timeContainer: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "#FFF5F2",
-        borderRadius: wp(2),
+        borderRadius: wp(1.5),
         paddingHorizontal: wp(2),
         paddingVertical: wp(1),
     },
     time: {
-        fontSize: wp(3.2),
+        fontSize: isSmallDevice ? wp(2.8) : wp(3),
         color: "#FF6B35",
         fontWeight: "600",
-        marginLeft: wp(1),
+        marginLeft: wp(0.5),
     },
     collapseButton: {
-        padding: wp(1),
+        padding: wp(0.5),
     },
     currentRestrictionContainer: {
         backgroundColor: "#FFF5F2",
-        margin: wp(4),
-        borderRadius: wp(3),
-        padding: wp(3),
-        borderLeftWidth: 4,
+        marginHorizontal: wp(3.5),
+        marginTop: wp(2.5),
+        marginBottom: wp(2),
+        borderRadius: wp(2.5),
+        padding: wp(2.5),
+        borderLeftWidth: 3,
         borderLeftColor: "#FF6B35",
     },
     currentRestrictionHeader: {
@@ -355,10 +363,10 @@ const styles = StyleSheet.create({
         marginBottom: wp(2),
     },
     currentRestrictionTitle: {
-        fontSize: wp(3.8),
+        fontSize: isSmallDevice ? wp(3.5) : wp(3.8),
         fontWeight: "bold",
         color: "#FF6B35",
-        marginLeft: wp(2),
+        marginLeft: wp(1.5),
     },
     currentRestrictionContent: {
         flexDirection: "row",
@@ -366,53 +374,55 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
     },
     currentRestrictionText: {
-        fontSize: wp(3.5),
+        fontSize: isSmallDevice ? wp(3.2) : wp(3.5),
         color: "#2C3E50",
         flex: 1,
+        fontWeight: "600",
     },
     currentPlateImage: {
-        width: wp(20),
-        height: wp(8),
+        width: isSmallDevice ? wp(16) : wp(18),
+        height: isSmallDevice ? wp(6.5) : wp(7.5),
         resizeMode: "contain",
     },
     weeklyContainer: {
         flex: 1,
-        paddingHorizontal: wp(4),
-        paddingBottom: wp(2),
+        paddingHorizontal: wp(3.5),
+        paddingBottom: wp(1),
     },
     weeklyTitle: {
-        fontSize: wp(3.8),
+        fontSize: isSmallDevice ? wp(3.5) : wp(3.8),
         fontWeight: "600",
         color: "#2C3E50",
-        marginBottom: wp(2),
+        marginBottom: wp(1.5),
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: wp(4),
+        paddingBottom: wp(2),
     },
     infoRow: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "#F8F9FA",
-        borderRadius: wp(3),
-        padding: wp(3),
-        marginBottom: wp(2),
+        borderRadius: wp(2.5),
+        paddingVertical: wp(2),
+        paddingHorizontal: wp(2.5),
+        marginBottom: wp(1.5),
         borderWidth: 1,
         borderColor: "#E1E8ED",
     },
     currentDayRow: {
         backgroundColor: "#FFF5F2",
         borderColor: "#FF6B35",
-        borderWidth: 2,
+        borderWidth: 1.5,
     },
     dayContainer: {
-        width: wp(20),
+        width: isSmallDevice ? wp(16) : wp(18),
         alignItems: "flex-start",
     },
     dayText: {
-        fontSize: wp(3.5),
+        fontSize: isSmallDevice ? wp(3.2) : wp(3.5),
         fontWeight: "600",
         color: "#2C3E50",
     },
@@ -427,36 +437,36 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     todayText: {
-        fontSize: wp(2.5),
+        fontSize: wp(2.2),
         color: "#FFFFFF",
         fontWeight: "bold",
     },
     terminacionText: {
-        fontSize: wp(3.2),
+        fontSize: isSmallDevice ? wp(2.8) : wp(3),
         color: "#7F8C8D",
         flex: 1,
-        marginLeft: wp(2),
+        marginLeft: wp(1),
     },
     placaSmall: {
-        width: wp(18),
-        height: wp(7),
+        width: isSmallDevice ? wp(15) : wp(16),
+        height: isSmallDevice ? wp(6) : wp(6.5),
         resizeMode: "contain",
     },
     placaSmall0y1: {
-        width: wp(18),
-        height: wp(9),
+        width: isSmallDevice ? wp(15) : wp(16),
+        height: isSmallDevice ? wp(7.5) : wp(8),
         resizeMode: "contain",
     },
     collapsedContent: {
         alignItems: "center",
-        paddingVertical: wp(2),
+        paddingVertical: wp(1.5),
     },
     dragIndicator: {
         width: wp(10),
-        height: 4,
+        height: 3,
         backgroundColor: "#E1E8ED",
         borderRadius: 2,
-        marginBottom: wp(2),
+        marginBottom: wp(1.5),
     },
     collapsedInfo: {
         flexDirection: "row",
@@ -466,19 +476,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: wp(4),
     },
     collapsedDayText: {
-        fontSize: wp(3.8),
+        fontSize: isSmallDevice ? wp(3.5) : wp(3.8),
         fontWeight: "bold",
         color: "#FF6B35",
     },
     collapsedRestrictionText: {
-        fontSize: wp(3.2),
+        fontSize: isSmallDevice ? wp(2.8) : wp(3.2),
         color: "#7F8C8D",
         flex: 1,
         marginLeft: wp(2),
     },
     collapsedPlateImage: {
-        width: wp(15),
-        height: wp(6),
+        width: isSmallDevice ? wp(13) : wp(15),
+        height: isSmallDevice ? wp(5) : wp(6),
         resizeMode: "contain",
     },
 })

@@ -36,6 +36,7 @@ const LoginScreen = ({ navigation }) => {
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
     const [isLoading, setIsLoading] = useState(false)
+    const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
     // Estados para modales personalizados
     const [modalVisible, setModalVisible] = useState(false)
@@ -175,6 +176,7 @@ const LoginScreen = ({ navigation }) => {
 
     // --- Login con Google (valida que el email exista en la BD)
     const handleGoogleSignIn = async () => {
+        setIsGoogleLoading(true)
         animateButton(googleButtonScale)
         try {
             await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
@@ -197,6 +199,7 @@ const LoginScreen = ({ navigation }) => {
                 const tokens = await GoogleSignin.getTokens().catch(() => null)
 
                 showCustomAlert("error", "Error de autenticación", "No se obtuvo el token de Google")
+                setIsGoogleLoading(false)
                 return
             }
 
@@ -212,6 +215,7 @@ const LoginScreen = ({ navigation }) => {
                 navigation.replace("Home")
             } else {
                 showCustomAlert("error", "Error de autenticación", data?.message || "No autorizado")
+                setIsGoogleLoading(false)
             }
         } catch (error) {
             console.log("Google Sign-In Error:", error)
@@ -269,6 +273,7 @@ const LoginScreen = ({ navigation }) => {
             else {
                 showCustomAlert("error", "Error inesperado", "No se pudo iniciar sesión con Google. Intenta nuevamente.")
             }
+            setIsGoogleLoading(false)
         }
     }
 
@@ -331,6 +336,7 @@ const LoginScreen = ({ navigation }) => {
                         onChangeText={setUsername}
                         keyboardType="email-address"
                         autoCapitalize="none"
+                        editable={!isLoading && !isGoogleLoading}
                     />
                 </View>
 
@@ -342,14 +348,15 @@ const LoginScreen = ({ navigation }) => {
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry
+                        editable={!isLoading && !isGoogleLoading}
                     />
                 </View>
 
                 <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
                     <TouchableOpacity
-                        style={[styles.button, isLoading && styles.buttonDisabled]}
+                        style={[styles.button, (isLoading || isGoogleLoading) && styles.buttonDisabled]}
                         onPress={handleLogin}
-                        disabled={isLoading}
+                        disabled={isLoading || isGoogleLoading}
                         activeOpacity={0.8}
                     >
                         <Text style={styles.buttonText}>{isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}</Text>
@@ -363,9 +370,16 @@ const LoginScreen = ({ navigation }) => {
                 </View>
 
                 <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
-                    <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn} activeOpacity={0.8}>
+                    <TouchableOpacity
+                        style={[styles.googleButton, (isGoogleLoading || isLoading) && styles.googleButtonDisabled]}
+                        onPress={handleGoogleSignIn}
+                        disabled={isGoogleLoading || isLoading}
+                        activeOpacity={0.8}
+                    >
                         <Image source={require("../../assets/logoGoogle.png")} style={styles.socialIcon} />
-                        <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                        <Text style={styles.googleButtonText}>
+                            {isGoogleLoading ? "Iniciando sesión..." : "Continuar con Google"}
+                        </Text>
                     </TouchableOpacity>
                 </Animated.View>
 
@@ -373,8 +387,9 @@ const LoginScreen = ({ navigation }) => {
                     onPress={() => navigation.navigate("RegisterScreen")}
                     style={styles.registerContainer}
                     activeOpacity={0.7}
+                    disabled={isLoading || isGoogleLoading}
                 >
-                    <Text style={styles.registerText}>
+                    <Text style={[styles.registerText, (isLoading || isGoogleLoading) && styles.registerTextDisabled]}>
                         ¿No tienes una cuenta?
                         <Text style={styles.registerLink}> Regístrate aquí</Text>
                     </Text>
@@ -555,6 +570,11 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 3,
     },
+    googleButtonDisabled: {
+        backgroundColor: "#F5F5F5",
+        borderColor: "#D1D5DB",
+        shadowOpacity: 0.05,
+    },
     socialIcon: {
         width: 24,
         height: 24,
@@ -577,6 +597,9 @@ const styles = StyleSheet.create({
     registerLink: {
         color: "#FF6B35",
         fontWeight: "bold",
+    },
+    registerTextDisabled: {
+        opacity: 0.5,
     },
     // Estilos del modal personalizado
     modalOverlay: {

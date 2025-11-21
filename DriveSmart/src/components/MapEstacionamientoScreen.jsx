@@ -118,7 +118,7 @@ const MapaEstacionamientos = ({ activeFilters }) => {
             const endTime = performance.now()
 
             if (Array.isArray(response.data) && response.data.length > 0) {
-                console.log(`📊 Datos cargados: ${response.data.length} elementos en ${(endTime - startTime).toFixed(2)}ms`)
+                console.log(`Datos cargados: ${response.data.length} elementos en ${(endTime - startTime).toFixed(2)}ms`)
 
                 // Procesar y validar datos
                 const validData = response.data.filter(
@@ -235,7 +235,7 @@ const MapaEstacionamientos = ({ activeFilters }) => {
                         <Text style={styles.errorTitle}>Error de Carga</Text>
                         <Text style={styles.errorText}>{error}</Text>
                         <TouchableOpacity style={styles.retryButton} onPress={retryLoad}>
-                            <Text style={styles.retryButtonText}>🔄 Reintentar Carga</Text>
+                            <Text style={styles.retryButtonText}>Reintentar Carga</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
