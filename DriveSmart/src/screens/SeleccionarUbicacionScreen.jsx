@@ -31,6 +31,9 @@ const SeleccionarUbicacionScreen = () => {
     const [streetAddress, setStreetAddress] = useState("Cargando dirección...")
     const [isLoading, setIsLoading] = useState(true)
     const [isDragging, setIsDragging] = useState(false)
+    const [connectionError, setConnectionError] = useState(null)
+    const [retryCount, setRetryCount] = useState(0)
+    const [isRetrying, setIsRetrying] = useState(false)
 
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
@@ -39,16 +42,141 @@ const SeleccionarUbicacionScreen = () => {
     const buttonScale = useRef(new Animated.Value(1)).current
     const markerBounce = useRef(new Animated.Value(1)).current
 
-    // Función para obtener la dirección desde coordenadas
-    const getAddressFromCoordinates = async (latitude, longitude) => {
+    const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeout)
+
         try {
-            const response = await fetch(
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+                headers: {
+                    Accept: "application/json",
+                    ...options.headers,
+                },
+            })
+            clearTimeout(timeoutId)
+            return response
+        } catch (error) {
+            clearTimeout(timeoutId)
+            if (error.name === "AbortError") {
+                const timeoutError = new Error("La solicitud tardó demasiado tiempo. Verifica tu conexión a Internet.")
+                timeoutError.code = "TIMEOUT"
+                throw timeoutError
+            }
+            if (
+                !error.message ||
+                error.message.includes("Network request failed") ||
+                error.message.includes("Failed to fetch")
+            ) {
+                const networkError = new Error("Sin conexión a Internet. Por favor, verifica tu conexión.")
+                networkError.code = "NETWORK_ERROR"
+                throw networkError
+            }
+            throw error
+        }
+    }
+
+    const categorizeError = (error, context = "operación") => {
+        console.error(`[Error en ${context}]:`, {
+            message: error.message,
+            code: error.code,
+            stack: error.stack,
+        })
+
+        if (error.code === "TIMEOUT") {
+            return {
+                message: "La conexión es lenta. La dirección puede tardar en cargarse.",
+                severity: "warning",
+                canRetry: true,
+            }
+        }
+
+        if (error.code === "NETWORK_ERROR") {
+            return {
+                message: "Sin conexión a Internet. Verifica tu conexión.",
+                severity: "error",
+                canRetry: true,
+            }
+        }
+
+        if (error.message?.includes("401") || error.message?.includes("403")) {
+            return {
+                message: "Error de autenticación del servicio. Contacta con soporte.",
+                severity: "error",
+                canRetry: false,
+            }
+        }
+
+        if (error.message?.includes("429")) {
+            return {
+                message: "Demasiadas solicitudes. Espera un momento.",
+                severity: "warning",
+                canRetry: true,
+            }
+        }
+
+        if (error.message?.includes("500") || error.message?.includes("502") || error.message?.includes("503")) {
+            return {
+                message: "Servicio temporalmente no disponible. Intenta nuevamente.",
+                severity: "warning",
+                canRetry: true,
+            }
+        }
+
+        return {
+            message: "Error al obtener la dirección. Intenta nuevamente.",
+            severity: "warning",
+            canRetry: true,
+        }
+    }
+
+    const getAddressFromCoordinates = async (latitude, longitude, isAutoRetry = false) => {
+        try {
+            setConnectionError(null)
+
+            const response = await fetchWithTimeout(
                 `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_GEOCODING_API_KEY}&language=es`,
+                {},
+                10000,
             )
+
+            if (!response.ok) {
+                const errorMsg = new Error(`Error del servidor: ${response.status}`)
+                errorMsg.code = `HTTP_${response.status}`
+                throw errorMsg
+            }
+
             const data = await response.json()
 
+            if (data.status === "ZERO_RESULTS") {
+                setConnectionError({
+                    message: "No se encontró dirección para esta ubicación.",
+                    severity: "info",
+                    canRetry: false,
+                })
+                return "Ubicación sin dirección registrada"
+            }
+
+            if (data.status === "OVER_QUERY_LIMIT") {
+                setConnectionError({
+                    message: "Límite de solicitudes alcanzado. Espera un momento.",
+                    severity: "warning",
+                    canRetry: true,
+                })
+                return "Límite alcanzado"
+            }
+
+            if (data.status === "REQUEST_DENIED") {
+                setConnectionError({
+                    message: "Error de configuración del servicio. Contacta soporte.",
+                    severity: "error",
+                    canRetry: false,
+                })
+                return "Error de configuración"
+            }
+
             if (data.results && data.results.length > 0) {
-                // Buscar la dirección más específica (route + street_number)
                 const result = data.results[0]
                 const addressComponents = result.address_components
 
@@ -68,7 +196,6 @@ const SeleccionarUbicacionScreen = () => {
                     }
                 })
 
-                // Construir la dirección
                 let address = ""
                 if (route) {
                     address = route
@@ -79,22 +206,44 @@ const SeleccionarUbicacionScreen = () => {
                         address += `, ${locality}`
                     }
                 } else {
-                    // Si no hay calle específica, usar la dirección formateada
                     address = result.formatted_address
                 }
 
+                setRetryCount(0)
+                setIsRetrying(false)
                 return address || "Dirección no disponible"
             } else {
+                setConnectionError({
+                    message: "No se pudo determinar la dirección.",
+                    severity: "info",
+                    canRetry: true,
+                })
                 return "Dirección no disponible"
             }
         } catch (error) {
-            console.error("Error getting address:", error)
-            return "Error al obtener dirección"
+            const errorInfo = categorizeError(error, "geocodificación")
+            setConnectionError(errorInfo)
+
+            if (errorInfo.canRetry && errorInfo.code === "NETWORK_ERROR" && retryCount < 2 && !isAutoRetry) {
+                setRetryCount((prev) => prev + 1)
+                setIsRetrying(true)
+                setTimeout(() => {
+                    getAddressFromCoordinates(latitude, longitude, true)
+                }, 2000)
+                return "Reintentando..."
+            }
+
+            if (errorInfo.code === "TIMEOUT") {
+                return "Verificando dirección..."
+            } else if (errorInfo.code === "NETWORK_ERROR") {
+                return "Sin conexión"
+            } else {
+                return "Error al obtener dirección"
+            }
         }
     }
 
     useEffect(() => {
-        // Obtener la ubicación actual del usuario al cargar la pantalla
         Geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords
@@ -107,13 +256,11 @@ const SeleccionarUbicacionScreen = () => {
                 setRegion(initialRegion)
                 setMarkerPosition({ latitude, longitude })
 
-                // Obtener la dirección inicial
                 const address = await getAddressFromCoordinates(latitude, longitude)
                 setStreetAddress(address)
 
                 setIsLoading(false)
 
-                // Animaciones de entrada
                 Animated.parallel([
                     Animated.timing(fadeAnim, {
                         toValue: 1,
@@ -134,8 +281,13 @@ const SeleccionarUbicacionScreen = () => {
                 ]).start()
             },
             (error) => {
-                console.log(error)
+                console.error("[Error de geolocalización]:", error)
                 setIsLoading(false)
+                setConnectionError({
+                    message: "No se pudo obtener tu ubicación. Verifica los permisos de GPS.",
+                    severity: "error",
+                    canRetry: false,
+                })
                 setStreetAddress("Error al obtener ubicación")
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
@@ -151,12 +303,11 @@ const SeleccionarUbicacionScreen = () => {
         setMarkerPosition(newPosition)
         setIsDragging(false)
 
-        // Obtener la nueva dirección
         setStreetAddress("Obteniendo dirección...")
+        setRetryCount(0)
         const address = await getAddressFromCoordinates(newRegion.latitude, newRegion.longitude)
         setStreetAddress(address)
 
-        // Animación de rebote del marcador
         Animated.sequence([
             Animated.timing(markerBounce, {
                 toValue: 1.2,
@@ -224,17 +375,34 @@ const SeleccionarUbicacionScreen = () => {
                 setRegion(newRegion)
                 setMarkerPosition({ latitude, longitude })
 
-                // Obtener la dirección de la ubicación actual
                 setStreetAddress("Obteniendo dirección...")
+                setRetryCount(0)
+                setConnectionError(null)
                 const address = await getAddressFromCoordinates(latitude, longitude)
                 setStreetAddress(address)
             },
             (error) => {
-                console.log(error)
+                console.error("[Error de geolocalización]:", error)
+                setConnectionError({
+                    message: "Error al obtener tu ubicación actual. Verifica que el GPS esté activado.",
+                    severity: "error",
+                    canRetry: false,
+                })
                 setStreetAddress("Error al obtener ubicación")
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
         )
+    }
+
+    const handleRetryAddress = async () => {
+        if (markerPosition) {
+            setConnectionError(null)
+            setRetryCount(0)
+            setIsRetrying(false)
+            setStreetAddress("Obteniendo dirección...")
+            const address = await getAddressFromCoordinates(markerPosition.latitude, markerPosition.longitude)
+            setStreetAddress(address)
+        }
     }
 
     return (
@@ -303,6 +471,64 @@ const SeleccionarUbicacionScreen = () => {
                     <Text style={styles.helpText}>Arrastra el mapa para seleccionar tu destino</Text>
                 </View>
             </Animated.View>
+
+            {connectionError && (
+                <Animated.View
+                    style={[
+                        styles.errorContainer,
+                        {
+                            opacity: fadeAnim,
+                        },
+                    ]}
+                >
+                    <View
+                        style={[
+                            styles.errorBox,
+                            connectionError.severity === "error" && styles.errorBoxError,
+                            connectionError.severity === "warning" && styles.errorBoxWarning,
+                            connectionError.severity === "info" && styles.errorBoxInfo,
+                        ]}
+                    >
+                        <Icon
+                            name={
+                                connectionError.severity === "error"
+                                    ? "error"
+                                    : connectionError.severity === "warning"
+                                        ? "warning"
+                                        : "info"
+                            }
+                            size={wp(4.5)}
+                            color={
+                                connectionError.severity === "error"
+                                    ? "#E74C3C"
+                                    : connectionError.severity === "warning"
+                                        ? "#F39C12"
+                                        : "#3498DB"
+                            }
+                        />
+                        <Text
+                            style={[
+                                styles.errorText,
+                                connectionError.severity === "error" && styles.errorTextError,
+                                connectionError.severity === "warning" && styles.errorTextWarning,
+                                connectionError.severity === "info" && styles.errorTextInfo,
+                            ]}
+                        >
+                            {connectionError.message}
+                        </Text>
+                        {connectionError.canRetry && (
+                            <TouchableOpacity onPress={handleRetryAddress} style={styles.retryButton}>
+                                <Icon name="refresh" size={wp(4)} color="#FF6B35" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    {isRetrying && retryCount > 0 && (
+                        <View style={styles.retryInfo}>
+                            <Text style={styles.retryInfoText}>Reintentando... ({retryCount}/2)</Text>
+                        </View>
+                    )}
+                </Animated.View>
+            )}
 
             {/* Botón de mi ubicación */}
             <Animated.View
@@ -466,6 +692,76 @@ const styles = StyleSheet.create({
         fontSize: wp(3.2),
         color: "#2C3E50",
         marginLeft: wp(2),
+        fontWeight: "500",
+    },
+    errorContainer: {
+        position: "absolute",
+        top: Platform.OS === "ios" ? hp(21) : hp(19),
+        left: wp(4),
+        right: wp(4),
+        zIndex: 10,
+    },
+    errorBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#FFF5F5",
+        borderRadius: wp(2),
+        paddingHorizontal: wp(3),
+        paddingVertical: wp(2.5),
+        borderLeftWidth: 4,
+        borderLeftColor: "#E74C3C",
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    errorBoxError: {
+        backgroundColor: "#FFEBEE",
+        borderLeftColor: "#E74C3C",
+    },
+    errorBoxWarning: {
+        backgroundColor: "#FFF3E0",
+        borderLeftColor: "#F39C12",
+    },
+    errorBoxInfo: {
+        backgroundColor: "#E3F2FD",
+        borderLeftColor: "#3498DB",
+    },
+    errorText: {
+        flex: 1,
+        fontSize: wp(3.2),
+        color: "#E74C3C",
+        marginLeft: wp(2),
+        fontWeight: "500",
+    },
+    errorTextError: {
+        color: "#C0392B",
+    },
+    errorTextWarning: {
+        color: "#E67E22",
+    },
+    errorTextInfo: {
+        color: "#2980B9",
+    },
+    retryButton: {
+        padding: wp(1.5),
+        marginLeft: wp(2),
+    },
+    retryInfo: {
+        marginTop: wp(2),
+        backgroundColor: "#FFFFFF",
+        borderRadius: wp(1.5),
+        paddingHorizontal: wp(3),
+        paddingVertical: wp(1.5),
+        alignItems: "center",
+    },
+    retryInfoText: {
+        fontSize: wp(2.8),
+        color: "#7F8C8D",
         fontWeight: "500",
     },
     myLocationContainer: {

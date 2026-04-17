@@ -13,6 +13,7 @@ import {
     Animated,
     Platform,
     StatusBar,
+    Modal,
 } from "react-native"
 import MapView, { Marker } from "react-native-maps"
 import Geolocation from "@react-native-community/geolocation"
@@ -45,22 +46,121 @@ const ConfirmarRecorridoScreen = () => {
     const [destinationAddress, setDestinationAddress] = useState("Cargando destino...")
     const [isStartingTrip, setIsStartingTrip] = useState(false)
 
+    const [error, setError] = useState(null)
+    const [errorType, setErrorType] = useState(null)
+    const retryCountRef = useRef(0)
+    const maxRetries = 2
+
+    // Estados para validación de placas
+    const [userProfile, setUserProfile] = useState(null)
+    const [restrictionPolygons, setRestrictionPolygons] = useState([])
+    const [showRestrictionAlert, setShowRestrictionAlert] = useState(false)
+    const [restrictionAlertData, setRestrictionAlertData] = useState(null)
+    const [confirmedDespiteRestriction, setConfirmedDespiteRestriction] = useState(false)
+
     // Animaciones
     const fadeAnim = useRef(new Animated.Value(0)).current
     const slideUpAnim = useRef(new Animated.Value(100)).current
     const logoScale = useRef(new Animated.Value(0.8)).current
     const buttonScale = useRef(new Animated.Value(1)).current
 
-    // Función para obtener dirección desde coordenadas
-    const getAddressFromCoordinates = async (latitude, longitude) => {
+    // Animaciones para el modal de restricción
+    const pulseAnim = useRef(new Animated.Value(1)).current
+    const slideAlertAnim = useRef(new Animated.Value(-300)).current
+    const fadeAlertAnim = useRef(new Animated.Value(0)).current
+
+    const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+            })
+            clearTimeout(timeoutId)
+            return response
+        } catch (error) {
+            clearTimeout(timeoutId)
+            if (error.name === "AbortError") {
+                throw new Error("TIMEOUT")
+            }
+            throw error
+        }
+    }
+
+    const categorizeError = (error, context) => {
+        console.log(`[v0] Error en ${context}:`, error)
+
+        if (error.message === "TIMEOUT") {
+            return {
+                type: "warning",
+                message: "La conexión está tardando más de lo normal",
+                canRetry: true,
+            }
+        }
+
+        if (!error.response && (error.message.includes("Network") || error.message.includes("Failed to fetch"))) {
+            return {
+                type: "error",
+                message: "Sin conexión a Internet. Verifica tu red",
+                canRetry: true,
+            }
+        }
+
+        if (error.response?.status === 401) {
+            return {
+                type: "error",
+                message: "Sesión expirada",
+                canRetry: false,
+            }
+        }
+
+        if (error.response?.status === 429) {
+            return {
+                type: "warning",
+                message: "Demasiadas solicitudes. Intenta en unos momentos",
+                canRetry: true,
+            }
+        }
+
+        if (error.response?.status >= 500) {
+            return {
+                type: "error",
+                message: "Error en el servidor. Intenta nuevamente",
+                canRetry: true,
+            }
+        }
+
+        return {
+            type: "error",
+            message: error.response?.data?.message || "Error al procesar la solicitud",
+            canRetry: true,
+        }
+    }
+
+    const showError = (message, type = "error") => {
+        setError(message)
+        setErrorType(type)
+
+        // Auto-ocultar errores de tipo info después de 5 segundos
+        if (type === "info") {
+            setTimeout(() => {
+                setError(null)
+                setErrorType(null)
+            }, 5000)
+        }
+    }
+
+    const getAddressFromCoordinates = async (latitude, longitude, retryCount = 0) => {
         try {
             if (!latitude || !longitude) {
                 return "Coordenadas no válidas"
             }
 
-            const response = await fetch(
-                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_MAPS_APIKEY}&language=es`,
-            )
+            const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_MAPS_APIKEY}&language=es`
+
+            const response = await fetchWithTimeout(url, {}, 10000)
             const data = await response.json()
 
             if (data.results && data.results.length > 0) {
@@ -101,18 +201,27 @@ const ConfirmarRecorridoScreen = () => {
                 return "Dirección no disponible"
             }
         } catch (error) {
-            console.error("Error getting address:", error)
+            console.error("[v0] Error getting address:", error)
+
+            // Reintentar solo para errores de red y si no hemos superado el máximo
+            if (retryCount < maxRetries && (error.message === "TIMEOUT" || error.message.includes("Network"))) {
+                console.log(`[v0] Reintentando obtener dirección (${retryCount + 1}/${maxRetries})...`)
+                await new Promise((resolve) => setTimeout(resolve, 1000 * (retryCount + 1)))
+                return getAddressFromCoordinates(latitude, longitude, retryCount + 1)
+            }
+
+            const errorInfo = categorizeError(error, "getAddressFromCoordinates")
+            showError(errorInfo.message, errorInfo.type)
             return "Error al obtener dirección"
         }
     }
 
-    // Función para iniciar viaje en la base de datos
     const iniciarViajeEnBD = async (origenCoords, destinoCoords, trayectoriaCoords, distanciaEstimada) => {
         try {
             const token = await AsyncStorage.getItem("authToken")
 
             if (!token) {
-                Alert.alert("Error", "No se encontró token de autenticación")
+                showError("No se encontró token de autenticación", "error")
                 return null
             }
 
@@ -141,17 +250,214 @@ const ConfirmarRecorridoScreen = () => {
                 throw new Error(response.data.message || "Error iniciando viaje")
             }
         } catch (error) {
-            console.error("Error iniciando viaje en BD:", error)
+            console.error("[v0] Error iniciando viaje en BD:", error)
+
+            const errorInfo = categorizeError(error, "iniciarViajeEnBD")
 
             if (error.response?.status === 401) {
-                Alert.alert("Sesión expirada", "Por favor, inicia sesión nuevamente")
-                navigation.navigate("LoginScreen")
+                Alert.alert("Sesión expirada", "Por favor, inicia sesión nuevamente", [
+                    { text: "OK", onPress: () => navigation.navigate("LoginScreen") },
+                ])
                 return null
             }
 
-            Alert.alert("Error", "No se pudo iniciar el viaje. Inténtalo de nuevo.")
+            showError(errorInfo.message, errorInfo.type)
             return null
         }
+    }
+
+    const handleRetryAddress = async () => {
+        setError(null)
+        setErrorType(null)
+        retryCountRef.current = 0
+
+        if (origin) {
+            setOriginAddress("Obteniendo ubicación...")
+            const originAddr = await getAddressFromCoordinates(origin.latitude, origin.longitude)
+            setOriginAddress(originAddr || "Ubicación actual")
+        }
+
+        if (destinationLocation?.latitude && destinationLocation?.longitude) {
+            setDestinationAddress("Cargando destino...")
+            const destAddr = await getAddressFromCoordinates(destinationLocation.latitude, destinationLocation.longitude)
+            setDestinationAddress(destAddr || "Destino")
+        }
+    }
+
+    const getCurrentDayRestriction = () => {
+        const today = new Date().getDay() // 0 = Domingo, 1 = Lunes, etc.
+        const restrictions = {
+            1: { numbers: ["0", "1"], day: "Lunes" },
+            2: { numbers: ["2", "3"], day: "Martes" },
+            3: { numbers: ["4", "5"], day: "Miércoles" },
+            4: { numbers: ["6", "7"], day: "Jueves" },
+            5: { numbers: ["8", "9"], day: "Viernes" },
+        }
+        return restrictions[today] || null
+    }
+
+    const isPlateRestrictedToday = (placa) => {
+        const currentRestriction = getCurrentDayRestriction()
+        if (!currentRestriction || !placa) return false
+        const lastDigit = placa.slice(-1)
+        return currentRestriction.numbers.includes(lastDigit)
+    }
+
+    const isPointInPolygon = (point, polygon) => {
+        const { latitude: x, longitude: y } = point
+        let inside = false
+
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            const xi = polygon[i].latitude
+            const yi = polygon[i].longitude
+            const xj = polygon[j].latitude
+            const yj = polygon[j].longitude
+
+            if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+                inside = !inside
+            }
+        }
+
+        return inside
+    }
+
+    const fetchUserProfile = async () => {
+        try {
+            const token = await AsyncStorage.getItem("authToken")
+            if (!token) {
+                console.log("[v0] No hay token de usuario")
+                return
+            }
+
+            const response = await axios.get(`${Config.API_URL}/get-profile`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+            })
+
+            setUserProfile(response.data)
+            console.log("[v0] Perfil de usuario obtenido:", response.data)
+        } catch (error) {
+            console.error("[v0] Error al obtener el perfil del usuario:", error)
+        }
+    }
+
+    const fetchRestrictionPolygons = async () => {
+        try {
+            console.log("[v0] Obteniendo polígonos de restricción...")
+            const response = await axios.get(`${Config.API_URL}/mapeado`, {
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            })
+
+            const polygons = response.data.filter((mapeado) => mapeado.type === "polygon")
+            setRestrictionPolygons(polygons)
+            console.log("[v0] Polígonos de restricción obtenidos:", polygons.length)
+        } catch (error) {
+            console.error("[v0] Error al obtener polígonos de restricción:", error)
+        }
+    }
+
+    const checkDestinationRestriction = () => {
+        if (!destinationLocation || !userProfile || !restrictionPolygons.length) {
+            return false
+        }
+
+        const destinationCoords = {
+            latitude: destinationLocation.latitude,
+            longitude: destinationLocation.longitude,
+        }
+
+        for (const polygon of restrictionPolygons) {
+            const polygonCoords = polygon.latlngs.map((coord) => ({
+                latitude: coord[0],
+                longitude: coord[1],
+            }))
+
+            if (isPointInPolygon(destinationCoords, polygonCoords)) {
+                console.log("[v0] Destino está dentro del área de restricción")
+
+                if (isPlateRestrictedToday(userProfile.placa)) {
+                    const currentRestriction = getCurrentDayRestriction()
+                    return {
+                        isRestricted: true,
+                        restriction: currentRestriction,
+                        userPlate: userProfile.placa,
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
+    const getCurrentTime = () => {
+        const now = new Date()
+        const hour = now.getHours()
+        if (hour >= 7 && hour < 19) {
+            return "EN HORARIO DE RESTRICCIÓN"
+        }
+        return "FUERA DE HORARIO DE RESTRICCIÓN"
+    }
+
+    const startRestrictionAlertAnimations = () => {
+        Animated.parallel([
+            Animated.timing(slideAlertAnim, {
+                toValue: 0,
+                duration: 500,
+                useNativeDriver: true,
+            }),
+            Animated.timing(fadeAlertAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+        ]).start()
+
+        const pulse = () => {
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1.1,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+            ]).start(() => pulse())
+        }
+        pulse()
+    }
+
+    const closeRestrictionAlert = () => {
+        Animated.parallel([
+            Animated.timing(slideAlertAnim, {
+                toValue: -300,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.timing(fadeAlertAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setShowRestrictionAlert(false)
+            setRestrictionAlertData(null)
+        })
+    }
+
+    const handleContinueDespiteRestriction = () => {
+        setConfirmedDespiteRestriction(true)
+        closeRestrictionAlert()
+        // Llamar a handleStart después de cerrar el modal
+        setTimeout(() => {
+            handleStart()
+        }, 500)
     }
 
     useEffect(() => {
@@ -160,6 +466,10 @@ const ConfirmarRecorridoScreen = () => {
             navigation.goBack()
             return
         }
+
+        // Obtener perfil del usuario y polígonos de restricción
+        fetchUserProfile()
+        fetchRestrictionPolygons()
 
         // Obtener la ubicación actual del usuario
         Geolocation.getCurrentPosition(
@@ -204,9 +514,10 @@ const ConfirmarRecorridoScreen = () => {
                 ]).start()
             },
             (error) => {
-                console.log(error)
+                console.log("[v0] Error obteniendo ubicación:", error)
                 setOriginAddress("Error al obtener ubicación")
                 setLoadingRoute(false)
+                showError("No se pudo obtener tu ubicación actual", "error")
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
         )
@@ -265,25 +576,46 @@ const ConfirmarRecorridoScreen = () => {
             return
         }
 
+        // Verificar restricciones solo si no se ha confirmado a pesar de la restricción
+        if (!confirmedDespiteRestriction) {
+            const restrictionCheck = checkDestinationRestriction()
+
+            if (restrictionCheck && restrictionCheck.isRestricted) {
+                // Mostrar modal de advertencia
+                setRestrictionAlertData({
+                    title: "⚠️ ZONA RESTRINGIDA",
+                    message: `Tu vehículo con placa terminada en "${restrictionCheck.userPlate.slice(
+                        -1,
+                    )}" no puede circular hoy ${restrictionCheck.restriction.day} en esta zona.`,
+                    restriction: restrictionCheck.restriction,
+                    userPlate: restrictionCheck.userPlate,
+                })
+                setShowRestrictionAlert(true)
+                startRestrictionAlertAnimations()
+                return // No continuar hasta que el usuario confirme
+            }
+        }
+
+        // Continuar con el inicio del viaje
         setIsStartingTrip(true)
+        setError(null)
+        setErrorType(null)
 
         try {
-            // Iniciar viaje en la base de datos
             const viajeId = await iniciarViajeEnBD(origin, destinationLocation, routeCoordinates, distance)
 
             if (viajeId) {
-                // Navegar a la pantalla de navegación con el ID del viaje
                 animateButton(() => {
                     navigation.navigate("NavegacionScreen", {
                         origin,
                         destinationLocation,
                         routeDetails: routeDetails || [],
-                        viajeId: viajeId, // Pasar el ID del viaje
+                        viajeId: viajeId,
                     })
                 })
             }
         } catch (error) {
-            console.error("Error al iniciar viaje:", error)
+            console.error("[v0] Error al iniciar viaje:", error)
         } finally {
             setIsStartingTrip(false)
         }
@@ -347,7 +679,7 @@ const ConfirmarRecorridoScreen = () => {
                             setLoadingRoute(false)
                         }}
                         onError={(errorMessage) => {
-                            console.log("Error en la dirección: ", errorMessage)
+                            console.log("[v0] Error en la dirección: ", errorMessage)
                             // Para misma ubicación, no es realmente un error
                             setDistance(0)
                             setDuration(0)
@@ -376,6 +708,27 @@ const ConfirmarRecorridoScreen = () => {
                     <Image source={require("../../assets/DRIVESMART.png")} style={styles.logo} />
                 </Animated.View>
             </Animated.View>
+
+            {error && (
+                <View
+                    style={[
+                        styles.errorBanner,
+                        errorType === "error" && styles.errorBannerError,
+                        errorType === "warning" && styles.errorBannerWarning,
+                        errorType === "info" && styles.errorBannerInfo,
+                    ]}
+                >
+                    <Icon
+                        name={errorType === "error" ? "error" : errorType === "warning" ? "warning" : "info"}
+                        size={wp(4.5)}
+                        color="#FFFFFF"
+                    />
+                    <Text style={styles.errorBannerText}>{error}</Text>
+                    <TouchableOpacity onPress={handleRetryAddress} style={styles.retryButton}>
+                        <Icon name="refresh" size={wp(4.5)} color="#FFFFFF" />
+                    </TouchableOpacity>
+                </View>
+            )}
 
             {/* Tarjeta inferior */}
             <Animated.View
@@ -467,6 +820,78 @@ const ConfirmarRecorridoScreen = () => {
                     </TouchableOpacity>
                 </Animated.View>
             </Animated.View>
+
+            {/* Modal de Alerta de Restricción */}
+            <Modal visible={showRestrictionAlert} transparent={true} animationType="none">
+                <View style={styles.modalOverlay}>
+                    <Animated.View
+                        style={[
+                            styles.restrictionAlertContainer,
+                            {
+                                opacity: fadeAlertAnim,
+                                transform: [{ translateY: slideAlertAnim }, { scale: pulseAnim }],
+                            },
+                        ]}
+                    >
+                        {/* Header de la alerta */}
+                        <View style={styles.restrictionAlertHeader}>
+                            <View style={styles.warningIconContainer}>
+                                <Icon name="warning" size={wp(8)} color="#FFFFFF" />
+                            </View>
+                            <TouchableOpacity style={styles.closeAlertButton} onPress={closeRestrictionAlert}>
+                                <Icon name="close" size={wp(6)} color="#FFFFFF" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Contenido de la alerta */}
+                        <View style={styles.restrictionAlertContent}>
+                            <Text style={styles.restrictionAlertTitle}>{restrictionAlertData?.title}</Text>
+                            <Text style={styles.restrictionAlertMessage}>{restrictionAlertData?.message}</Text>
+
+                            {/* Información de la placa */}
+                            <View style={styles.plateContainer}>
+                                <Text style={styles.plateLabel}>Tu Placa:</Text>
+                                <View style={styles.plateDisplay}>
+                                    <Text style={styles.plateText}>{restrictionAlertData?.userPlate}</Text>
+                                </View>
+                            </View>
+
+                            {/* Información del horario */}
+                            <View style={styles.timeContainer}>
+                                <Icon name="schedule" size={wp(5)} color="#FF6B35" />
+                                <View style={styles.timeInfo}>
+                                    <Text style={styles.timeLabel}>Estado Actual:</Text>
+                                    <Text style={styles.timeStatus}>{getCurrentTime()}</Text>
+                                </View>
+                            </View>
+
+                            {/* Información adicional */}
+                            <View style={styles.infoContainer}>
+                                <Icon name="info-outline" size={wp(4)} color="#7F8C8D" />
+                                <Text style={styles.infoText}>Horario de restricción: Lunes a Viernes de 07:00 a 19:00</Text>
+                            </View>
+
+                            {/* Pregunta al usuario */}
+                            <View style={styles.questionContainer}>
+                                <Text style={styles.questionText}>¿Deseas continuar de todas formas?</Text>
+                            </View>
+                        </View>
+
+                        {/* Botones de acción */}
+                        <View style={styles.restrictionAlertActions}>
+                            <TouchableOpacity style={styles.cancelRestrictionButton} onPress={closeRestrictionAlert}>
+                                <Icon name="cancel" size={wp(5)} color="#FFFFFF" />
+                                <Text style={styles.cancelRestrictionButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.continueButton} onPress={handleContinueDespiteRestriction}>
+                                <Icon name="check-circle" size={wp(5)} color="#FFFFFF" />
+                                <Text style={styles.continueButtonText}>Continuar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </Animated.View>
+                </View>
+            </Modal>
         </View>
     )
 }
@@ -515,6 +940,42 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
         shadowRadius: 4,
         elevation: 5,
+    },
+    errorBanner: {
+        position: "absolute",
+        top: Platform.OS === "ios" ? hp(16) : hp(14),
+        left: wp(4),
+        right: wp(4),
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: hp(1.2),
+        paddingHorizontal: wp(3),
+        borderRadius: wp(2),
+        zIndex: 100,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    errorBannerError: {
+        backgroundColor: "#E74C3C",
+    },
+    errorBannerWarning: {
+        backgroundColor: "#F39C12",
+    },
+    errorBannerInfo: {
+        backgroundColor: "#3498DB",
+    },
+    errorBannerText: {
+        flex: 1,
+        color: "#FFFFFF",
+        fontSize: wp(3.2),
+        fontWeight: "600",
+        marginLeft: wp(2),
+    },
+    retryButton: {
+        padding: wp(1),
     },
     bottomCard: {
         position: "absolute",
@@ -699,6 +1160,187 @@ const styles = StyleSheet.create({
         color: "#FFFFFF",
         fontSize: wp(4),
         fontWeight: "bold",
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: wp(4),
+    },
+    restrictionAlertContainer: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: wp(4),
+        width: "100%",
+        maxWidth: wp(90),
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 10,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 15,
+        overflow: "hidden",
+    },
+    restrictionAlertHeader: {
+        backgroundColor: "#E74C3C",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: wp(4),
+        paddingVertical: wp(3),
+    },
+    warningIconContainer: {
+        backgroundColor: "rgba(255, 255, 255, 0.2)",
+        borderRadius: wp(6),
+        padding: wp(2),
+    },
+    closeAlertButton: {
+        backgroundColor: "rgba(255, 255, 255, 0.2)",
+        borderRadius: wp(4),
+        padding: wp(1.5),
+    },
+    restrictionAlertContent: {
+        padding: wp(5),
+    },
+    restrictionAlertTitle: {
+        fontSize: wp(5.5),
+        fontWeight: "bold",
+        color: "#E74C3C",
+        textAlign: "center",
+        marginBottom: wp(3),
+    },
+    restrictionAlertMessage: {
+        fontSize: wp(4),
+        color: "#2C3E50",
+        textAlign: "center",
+        lineHeight: wp(5.5),
+        marginBottom: wp(4),
+    },
+    plateContainer: {
+        alignItems: "center",
+        marginBottom: wp(4),
+    },
+    plateLabel: {
+        fontSize: wp(3.5),
+        color: "#7F8C8D",
+        marginBottom: wp(2),
+    },
+    plateDisplay: {
+        backgroundColor: "#2C3E50",
+        borderRadius: wp(2),
+        paddingHorizontal: wp(4),
+        paddingVertical: wp(2),
+        borderWidth: 2,
+        borderColor: "#FF6B35",
+    },
+    plateText: {
+        fontSize: wp(5),
+        fontWeight: "bold",
+        color: "#FFFFFF",
+        letterSpacing: 2,
+    },
+    timeContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#FFF5F2",
+        borderRadius: wp(2),
+        padding: wp(3),
+        marginBottom: wp(3),
+    },
+    timeInfo: {
+        marginLeft: wp(2),
+        flex: 1,
+    },
+    timeLabel: {
+        fontSize: wp(3.2),
+        color: "#7F8C8D",
+    },
+    timeStatus: {
+        fontSize: wp(3.5),
+        fontWeight: "600",
+        color: "#FF6B35",
+    },
+    infoContainer: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        backgroundColor: "#F8F9FA",
+        borderRadius: wp(2),
+        padding: wp(3),
+        marginBottom: wp(3),
+    },
+    infoText: {
+        fontSize: wp(3.2),
+        color: "#7F8C8D",
+        marginLeft: wp(2),
+        flex: 1,
+        lineHeight: wp(4.5),
+    },
+    questionContainer: {
+        backgroundColor: "#FFF3E0",
+        borderRadius: wp(2),
+        padding: wp(3),
+        borderLeftWidth: 4,
+        borderLeftColor: "#FF6B35",
+    },
+    questionText: {
+        fontSize: wp(3.8),
+        color: "#2C3E50",
+        fontWeight: "600",
+        textAlign: "center",
+    },
+    restrictionAlertActions: {
+        flexDirection: "row",
+        padding: wp(4),
+        paddingTop: 0,
+        gap: wp(2),
+    },
+    cancelRestrictionButton: {
+        flex: 1,
+        backgroundColor: "#95A5A6",
+        borderRadius: wp(3),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: wp(3.5),
+        shadowColor: "#95A5A6",
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    cancelRestrictionButtonText: {
+        color: "#FFFFFF",
+        fontSize: wp(4),
+        fontWeight: "bold",
+        marginLeft: wp(2),
+    },
+    continueButton: {
+        flex: 1,
+        backgroundColor: "#F39C12",
+        borderRadius: wp(3),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: wp(3.5),
+        shadowColor: "#F39C12",
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    continueButtonText: {
+        color: "#FFFFFF",
+        fontSize: wp(4),
+        fontWeight: "bold",
+        marginLeft: wp(2),
     },
 })
 

@@ -36,6 +36,9 @@ const ARRIVAL_THRESHOLD = 50 // metros para considerar llegada
 const REROUTE_THRESHOLD = 100 // metros para recalcular ruta
 const MIN_LOCATION_ACCURACY = 20 // metros de precisión mínima
 const LOCATION_UPDATE_INTERVAL = 2000 // ms entre actualizaciones
+// Aumentar tiempo mínimo entre recálculos para evitar recálculos frecuentes
+const MIN_REROUTE_INTERVAL = 15000 // 15 segundos mínimo entre recálculos
+const REROUTE_DEBOUNCE = 8000 // 8 segundos de debounce para recálculo
 
 // Función para expandir abreviaciones en las instrucciones de voz
 const expandAbbreviations = (text) => {
@@ -208,37 +211,40 @@ const getEndCoordsForStreetName = (selectedParkingSpot, currentLocation) => {
     return null
 }
 
+// Función con timeout y manejo de errores para reverse geocoding
 const obtenerNombreCalle = async (latitude, longitude) => {
     try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+
         const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${Config.GOOGLE_MAPS_APIKEY}&language=es`
 
-        const response = await fetch(url)
-        console.log("Response status:", response.status)
+        const response = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeoutId)
 
         const data = await response.json()
-        console.log("Geocoding response:", JSON.stringify(data, null, 2))
 
         if (data.results && data.results.length > 0) {
-            // Buscar el componente de ruta (street)
             const addressComponents = data.results[0].address_components
-            console.log("Address components:", addressComponents)
 
             const streetComponent = addressComponents.find(
                 (component) => component.types.includes("route") || component.types.includes("street_address"),
             )
 
             if (streetComponent) {
-                console.log("Street component encontrado:", streetComponent.long_name)
                 return streetComponent.long_name
             }
 
-            // Si no encuentra ruta específica, usar la dirección formateada
-            const fallbackName = data.results[0].formatted_address.split(",")[0]
-            return fallbackName
+            return data.results[0].formatted_address.split(",")[0]
         }
 
         return "Calle no identificada"
     } catch (error) {
+        if (error.name === "AbortError") {
+            console.error("Timeout obteniendo nombre de calle")
+        } else {
+            console.error("Error obteniendo nombre de calle:", error.message)
+        }
         return "Calle no identificada"
     }
 }
@@ -252,7 +258,7 @@ const NavegacionScreen = () => {
     const [routeDetails, setRouteDetails] = useState(null)
     const [steps, setSteps] = useState([])
     const [currentStep, setCurrentStep] = useState(0)
-    const [is3DMode, setIs3DMode] = useState(false)
+    const [is3DMode, setIs3DMode] = useState(true)
     const [isNavigationVisible, setIsNavigationVisible] = useState(true)
     const [showArrivalModal, setShowArrivalModal] = useState(false)
     const [showParkingModal, setShowParkingModal] = useState(false)
@@ -269,23 +275,28 @@ const NavegacionScreen = () => {
     const [hasInitializedRoute, setHasInitializedRoute] = useState(false)
 
     // Estados para control de navegación mejorado
-    const [hasArrived, setHasArrived] = useState(false) // Inicializado a false
-    const [isRecalculating, setIsRecalculating] = useState(false) // Inicializado a false
+    const [hasArrived, setHasArrived] = useState(false)
+    const [isRecalculating, setIsRecalculating] = useState(false)
     const [lastValidLocation, setLastValidLocation] = useState(origin)
     const [routeCoordinates, setRouteCoordinates] = useState([])
-    const [isOffRoute, setIsOffRoute] = useState(false) // Inicializado a false
+    const [isOffRoute, setIsOffRoute] = useState(false)
     const [consecutiveArrivalChecks, setConsecutiveArrivalChecks] = useState(0)
+    // Estado para controlar el tiempo del último recálculo
+    const [lastRerouteTime, setLastRerouteTime] = useState(0)
 
     // Estados para tracking del viaje
     const [totalDistanceTraveled, setTotalDistanceTraveled] = useState(0)
     const [lastLocationForDistance, setLastLocationForDistance] = useState(origin)
+
+    // Estado para manejo de errores
+    const [networkError, setNetworkError] = useState(null)
 
     const mapRef = useRef(null)
     const locationWatchId = useRef(null)
     const recalculateTimeoutRef = useRef(null)
 
     const [isVoiceEnabled, setIsVoiceEnabled] = useState(false)
-    const [isSpeaking, setIsSpeaking] = useState(false) // Inicializado a false
+    const [isSpeaking, setIsSpeaking] = useState(false)
     const [lastSpokenInstruction, setLastSpokenInstruction] = useState("")
 
     // Animaciones
@@ -308,11 +319,29 @@ const NavegacionScreen = () => {
     const voiceButtonScale = useRef(new Animated.Value(1)).current
     const voicePulseAnim = useRef(new Animated.Value(1)).current
 
-    // Función para actualizar distancia en BD
+    const [userHeading, setUserHeading] = useState(0)
+    const previousLocationRef = useRef(origin)
+
+    // Función para calcular la diferencia de heading entre dos ubicaciones
+    const calculateHeadingFromMovement = (from, to) => {
+        const deltaLat = to.latitude - from.latitude
+        const deltaLon = to.longitude - from.longitude
+        const radians = Math.atan2(deltaLon, deltaLat)
+        let degrees = radians * (180 / Math.PI)
+        if (degrees < 0) {
+            degrees += 360
+        }
+        return degrees
+    }
+
+    // Función con timeout para actualizar distancia en BD
     const actualizarDistanciaEnBD = async (distanciaRecorrida) => {
         try {
             const token = await AsyncStorage.getItem("authToken")
             if (!token || !viajeId) return
+
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 5000)
 
             await axios.put(
                 `${Config.API_URL}/viajes/${viajeId}/actualizar-distancia`,
@@ -325,18 +354,24 @@ const NavegacionScreen = () => {
                         "Content-Type": "application/json",
                     },
                     timeout: 5000,
+                    signal: controller.signal,
                 },
             )
+
+            clearTimeout(timeoutId)
         } catch (error) {
-            console.error("Error actualizando distancia en BD:", error)
+            // Error silencioso - no crítico
         }
     }
 
-    // Función para iniciar búsqueda de estacionamiento en BD
+    // Función con timeout para iniciar búsqueda de estacionamiento en BD
     const iniciarBusquedaEstacionamientoEnBD = async (ubicacionBusqueda) => {
         try {
             const token = await AsyncStorage.getItem("authToken")
             if (!token || !viajeId) return
+
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 5000)
 
             await axios.post(
                 `${Config.API_URL}/viajes/${viajeId}/buscar-estacionamiento`,
@@ -350,13 +385,17 @@ const NavegacionScreen = () => {
                         "Content-Type": "application/json",
                     },
                     timeout: 5000,
+                    signal: controller.signal,
                 },
             )
+
+            clearTimeout(timeoutId)
         } catch (error) {
-            console.error("Error iniciando búsqueda en BD:", error)
+            // Error silencioso - no crítico
         }
     }
 
+    // Función con mejor manejo de errores para finalizar viaje
     const finalizarViajeEnBD = async (datosFinalizacion) => {
         try {
             const token = await AsyncStorage.getItem("authToken")
@@ -373,10 +412,8 @@ const NavegacionScreen = () => {
             let idMapeadoNumerico = null
             if (datosFinalizacion.id_mapeado) {
                 if (typeof datosFinalizacion.id_mapeado === "string") {
-                    // Extract numbers from string like "parking-231-1757963939644"
                     const match = datosFinalizacion.id_mapeado.match(/\d+/g)
                     if (match && match.length > 0) {
-                        // Use the last number which is usually the timestamp/ID
                         idMapeadoNumerico = Number.parseInt(match[match.length - 1])
                     }
                 } else {
@@ -384,7 +421,6 @@ const NavegacionScreen = () => {
                 }
             }
 
-            // Validar datos requeridos
             const datosValidados = {
                 estado: datosFinalizacion.estado || "completado",
                 distancia_final: datosFinalizacion.distancia_final || 0,
@@ -395,6 +431,8 @@ const NavegacionScreen = () => {
                 calle_estacionamiento: calle || "Calle no identificada",
             }
 
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 10000)
 
             await axios.post(`${Config.API_URL}/viajes/${viajeId}/finalizar`, datosValidados, {
                 headers: {
@@ -402,13 +440,15 @@ const NavegacionScreen = () => {
                     "Content-Type": "application/json",
                 },
                 timeout: 10000,
+                signal: controller.signal,
             })
 
+            clearTimeout(timeoutId)
         } catch (error) {
-            console.error("Error finalizando viaje en BD:", error)
-            if (error.response) {
-                console.error("Respuesta del servidor:", error.response.data)
-                console.error("Status:", error.response.status)
+            if (error.name === "AbortError") {
+                console.error("Timeout finalizando viaje")
+            } else {
+                console.error("Error finalizando viaje:", error.message)
             }
         }
     }
@@ -486,7 +526,7 @@ const NavegacionScreen = () => {
             )
             // Si el salto es mayor a 500m en menos de 5 segundos, probablemente es un error
             if (distance > 500) {
-                console.warn("🚨 Salto de ubicación muy grande detectado:", distance, "metros")
+                console.warn("Salto de ubicación muy grande detectado:", distance, "metros")
                 return false
             }
         }
@@ -518,15 +558,24 @@ const NavegacionScreen = () => {
         return minDistance > REROUTE_THRESHOLD
     }
 
-    // Función para recalcular la ruta
+    // Función mejorada para recalcular la ruta con control de frecuencia
     const recalculateRoute = async () => {
+        const now = Date.now()
+
+        // Verificar si ha pasado suficiente tiempo desde el último recálculo
+        if (now - lastRerouteTime < MIN_REROUTE_INTERVAL) {
+            console.log("Recálculo ignorado - muy pronto desde el último")
+            return
+        }
+
         if (isRecalculating) {
             return
         }
 
-        console.log("🔄 Recalculando ruta...")
+        console.log("Recalculando ruta...")
         setIsRecalculating(true)
         setIsOffRoute(false)
+        setLastRerouteTime(now)
 
         try {
             // Forzar una nueva consulta a la API de direcciones
@@ -539,7 +588,7 @@ const NavegacionScreen = () => {
                 speakInstruction("Recalculando ruta")
             }
         } catch (error) {
-            console.error("❌ Error recalculando ruta:", error)
+            console.error("Error recalculando ruta:", error.message)
         } finally {
             setIsRecalculating(false)
         }
@@ -556,16 +605,36 @@ const NavegacionScreen = () => {
 
         locationWatchId.current = Geolocation.watchPosition(
             (position) => {
-                const { latitude, longitude, accuracy } = position.coords
+                const { latitude, longitude, accuracy, heading: gpsHeading } = position.coords
                 const newLocation = { latitude, longitude }
 
                 // Validar la nueva ubicación
                 if (!isValidLocation(newLocation, accuracy)) {
-                    console.warn("🚨 Ubicación inválida ignorada")
+                    console.warn("Ubicación inválida ignorada")
                     return
                 }
 
-                console.log("📍 Nueva ubicación válida:", newLocation, "Precisión:", accuracy)
+                if (previousLocationRef.current) {
+                    const distance = calculateDistance(
+                        previousLocationRef.current.latitude,
+                        previousLocationRef.current.longitude,
+                        newLocation.latitude,
+                        newLocation.longitude,
+                    )
+
+                    // Solo actualizar heading si el movimiento es significativo (más de 3 metros)
+                    if (distance > 3) {
+                        // Priorizar GPS heading si está disponible y es válido
+                        const calculatedHeading = calculateHeadingFromMovement(previousLocationRef.current, newLocation)
+                        const finalHeading =
+                            gpsHeading !== undefined && gpsHeading !== -1 && gpsHeading >= 0 ? gpsHeading : calculatedHeading
+
+                        setUserHeading(finalHeading)
+                        previousLocationRef.current = newLocation
+                    }
+                } else {
+                    previousLocationRef.current = newLocation
+                }
 
                 // Calcular distancia recorrida
                 if (lastLocationForDistance) {
@@ -593,27 +662,28 @@ const NavegacionScreen = () => {
                 setLastValidLocation(newLocation)
                 setLastLocationForDistance(newLocation)
 
-                // Verificar si está fuera de la ruta (solo si ya tenemos una ruta)
+                // Verificar si está fuera de la ruta con control de frecuencia mejorado
                 if (routeCoordinates.length > 0 && !isRecalculating && hasInitializedRoute) {
                     const offRoute = checkIfOffRoute(newLocation, routeCoordinates)
+                    const now = Date.now()
 
-                    if (offRoute && !isOffRoute) {
-                        console.log("🛣️ Usuario fuera de la ruta, programando recálculo...")
+                    if (offRoute && !isOffRoute && now - lastRerouteTime > MIN_REROUTE_INTERVAL) {
+                        console.log("Usuario fuera de la ruta, programando recálculo...")
                         setIsOffRoute(true)
 
-                        // Recalcular después de un pequeño delay para evitar múltiples recálculos
+                        // Recalcular después de un delay más largo para evitar múltiples recálculos
                         if (recalculateTimeoutRef.current) {
                             clearTimeout(recalculateTimeoutRef.current)
                         }
 
                         recalculateTimeoutRef.current = setTimeout(() => {
                             recalculateRoute()
-                        }, 3000) // Esperar 3 segundos antes de recalcular
+                        }, REROUTE_DEBOUNCE)
                     }
                 }
             },
             (error) => {
-                console.error("❌ Error de geolocalización:", error)
+                console.error("Error de geolocalización:", error.message)
                 // En caso de error, mantener la última ubicación válida
             },
             watchOptions,
@@ -631,14 +701,14 @@ const NavegacionScreen = () => {
         isOffRoute,
         totalDistanceTraveled,
         lastLocationForDistance,
+        lastRerouteTime,
     ])
 
     // Configuración de Text-to-Speech
     useEffect(() => {
-        // Configurar TTS
         Tts.setDefaultLanguage("es-ES")
-        Tts.setDefaultRate(0.6)
-        Tts.setDefaultPitch(1.0)
+        Tts.setDefaultRate(0.55) // Velocidad más lenta y natural (antes 0.6)
+        Tts.setDefaultPitch(0.95) // Tono ligeramente más grave y natural (antes 1.0)
 
         // Listeners para el estado del TTS
         Tts.addEventListener("tts-start", () => setIsSpeaking(true))
@@ -685,7 +755,7 @@ const NavegacionScreen = () => {
         }
     }
 
-    // Función para hablar una instrucción
+    // Función mejorada para hablar una instrucción con voz más natural
     const speakInstruction = (text) => {
         if (isVoiceEnabled && text && text !== lastSpokenInstruction) {
             // Limpiar HTML tags y caracteres especiales
@@ -699,6 +769,15 @@ const NavegacionScreen = () => {
 
             // Expandir abreviaciones para mejor pronunciación
             cleanText = expandAbbreviations(cleanText)
+
+            // Agregar pausas naturales para mejor fluidez
+            cleanText = cleanText
+                .replace(/,/g, ", ... ")
+                .replace(/\./g, ". ... ")
+                .replace(/hacia/gi, "... hacia")
+                .replace(/luego/gi, "... luego")
+                .replace(/después/gi, "... después")
+                .replace(/en (\d+)/gi, "... en $1")
 
             if (cleanText.length > 0) {
                 Tts.speak(cleanText)
@@ -733,22 +812,28 @@ const NavegacionScreen = () => {
         voicePulseAnim.setValue(1)
     }
 
-    const updateCamera = (location) => {
-        if (mapRef.current) {
-            mapRef.current.animateCamera({
+    // Actualizar cámara
+    const updateCamera = (location, heading = null) => {
+        if (mapRef.current && location) {
+            const shouldUse3D = is3DMode && !showParkingPreview && navigationMode !== "preview"
+
+            const cameraConfig = {
                 center: location,
-                pitch: is3DMode ? 60 : 0,
-                heading: steps[currentStep]?.maneuver?.heading || 0,
-                zoom: showParkingPreview ? 16 : 18,
-            })
+                pitch: shouldUse3D ? 65 : 0, // Vista desde arriba cuando busca estacionamiento
+                heading: shouldUse3D ? (heading !== null ? heading : userHeading) : 0,
+                zoom: showParkingPreview ? 17 : 18, // Zoom más alejado para ver más estacionamientos
+                altitude: shouldUse3D ? 500 : 1500,
+            }
+
+            mapRef.current.animateCamera(cameraConfig, { duration: 300 })
         }
     }
 
     useEffect(() => {
-        if (currentLocation && !isNavigatingToParking && !showParkingPreview) {
-            updateCamera(currentLocation)
+        if (currentLocation && !isNavigatingToParking && !showParkingPreview && is3DMode) {
+            updateCamera(currentLocation, userHeading)
         }
-    }, [currentLocation, is3DMode, currentStep, isNavigatingToParking, showParkingPreview])
+    }, [currentLocation, userHeading, is3DMode, isNavigatingToParking, showParkingPreview])
 
     const handleCancel = async () => {
         // Finalizar viaje como cancelado
@@ -763,19 +848,19 @@ const NavegacionScreen = () => {
     }
 
     const handleDirectionsReady = (result) => {
-        console.log("🗺️ Ruta calculada exitosamente")
+        console.log("Ruta calculada exitosamente")
         setRouteDetails(result)
         setSteps(result.legs[0].steps)
         setCurrentStep(0)
         setHasInitializedRoute(true)
         setIsRecalculating(false)
+        setNetworkError(null)
 
         // Extraer coordenadas de la ruta para verificación de desvío
         const coordinates = []
         result.legs.forEach((leg) => {
             leg.steps.forEach((step) => {
                 if (step.polyline && step.polyline.points) {
-                    // Decodificar polyline si es necesario
                     coordinates.push(step.start_location)
                     coordinates.push(step.end_location)
                 }
@@ -790,44 +875,75 @@ const NavegacionScreen = () => {
         }
     }
 
+    // Manejo de errores mejorado para direcciones
     const handleDirectionsError = (errorMessage) => {
-        console.error("❌ Error en direcciones:", errorMessage)
+        console.error("Error en direcciones:", errorMessage)
         setIsRecalculating(false)
 
-        if (isVoiceEnabled) {
-            speakInstruction("Error calculando ruta, reintentando")
+        // Categorizar el error
+        let errorType = "unknown"
+        let userMessage = "Error calculando la ruta"
+
+        if (errorMessage.includes("ZERO_RESULTS")) {
+            errorType = "no_route"
+            userMessage = "No se encontró una ruta disponible"
+        } else if (errorMessage.includes("OVER_QUERY_LIMIT")) {
+            errorType = "limit"
+            userMessage = "Demasiadas solicitudes, intenta en un momento"
+        } else if (errorMessage.includes("REQUEST_DENIED")) {
+            errorType = "denied"
+            userMessage = "Servicio de rutas no disponible"
+        } else if (errorMessage.includes("network") || errorMessage.includes("timeout")) {
+            errorType = "network"
+            userMessage = "Problema de conexión a internet"
         }
 
-        // Reintentar después de un delay
-        setTimeout(() => {
-            if (!hasInitializedRoute) {
-                console.log("🔄 Reintentando cálculo de ruta...")
-                setHasInitializedRoute(false)
-            }
-        }, 3000)
+        setNetworkError({ type: errorType, message: userMessage })
+
+        if (isVoiceEnabled) {
+            speakInstruction(userMessage + ", reintentando")
+        }
+
+        // Reintentar después de un delay solo si no es error de límite
+        if (errorType !== "limit") {
+            setTimeout(() => {
+                if (!hasInitializedRoute) {
+                    console.log("Reintentando cálculo de ruta...")
+                    setHasInitializedRoute(false)
+                    setNetworkError(null)
+                }
+            }, 5000)
+        }
     }
 
     const toggle3DMode = () => {
-        setIs3DMode(!is3DMode)
-        updateCamera(currentLocation)
+        const newMode = !is3DMode
+        setIs3DMode(newMode)
+        updateCamera(currentLocation, newMode ? userHeading : 0)
     }
 
     const toggleNavigationCard = () => {
         setIsNavigationVisible(!isNavigationVisible)
     }
 
-    // Función para buscar calles de estacionamiento cercanas
+    // Función con timeout y manejo de errores para buscar calles de estacionamiento cercanas
     const findNearbyParkingStreets = async (centerLocation, radius = 200) => {
         try {
-            console.log("🔍 Buscando calles de estacionamiento cercanas...")
+            console.log("Buscando calles de estacionamiento cercanas...")
+
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 15000)
 
             // Obtener datos de estacionamiento de la API
             const response = await axios.get(`${Config.API_URL}/mapeado`, {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                timeout: 10000,
+                timeout: 15000,
+                signal: controller.signal,
             })
+
+            clearTimeout(timeoutId)
 
             if (!Array.isArray(response.data)) {
                 throw new Error("Datos de estacionamiento no válidos")
@@ -848,10 +964,11 @@ const NavegacionScreen = () => {
                     item.latlngs &&
                     Array.isArray(item.latlngs) &&
                     item.latlngs.length > 1 &&
+                    item.restriction &&
                     allowedParkingTypes.includes(item.restriction),
             )
 
-            console.log(`📊 Encontradas ${parkingLines.length} líneas de estacionamiento permitido`)
+            console.log(`Encontradas ${parkingLines.length} líneas de estacionamiento permitido`)
 
             // Calcular distancias y encontrar las más cercanas
             const parkingWithDistances = parkingLines.map((line, index) => {
@@ -864,7 +981,7 @@ const NavegacionScreen = () => {
 
                 return {
                     ...line,
-                    id: line.id, // Use real database ID instead of fake generated ID
+                    id: line.id,
                     midPoint: { latitude: midPoint[0], longitude: midPoint[1] },
                     distance: distance,
                     streetName: `Calle ${line.restriction.replace("ESTACIONAMIENTO ", "")}`,
@@ -874,11 +991,20 @@ const NavegacionScreen = () => {
 
             const nearbyParking = parkingWithDistances.filter((parking) => parking.distance <= radius)
 
-            console.log(`🎯 Encontradas ${nearbyParking.length} opciones dentro de ${radius}m`)
+            console.log(`Encontradas ${nearbyParking.length} opciones dentro de ${radius}m`)
 
             return nearbyParking
         } catch (error) {
-            console.error("❌ Error al buscar estacionamientos:", error)
+            if (error.name === "AbortError") {
+                console.error("Timeout buscando estacionamientos")
+                setNetworkError({ type: "timeout", message: "La búsqueda tardó demasiado" })
+            } else if (error.code === "ECONNABORTED" || error.message.includes("Network")) {
+                console.error("Error de red buscando estacionamientos")
+                setNetworkError({ type: "network", message: "Problema de conexión a internet" })
+            } else {
+                console.error("Error al buscar estacionamientos:", error.message)
+                setNetworkError({ type: "unknown", message: "Error buscando estacionamientos" })
+            }
             return []
         }
     }
@@ -902,7 +1028,7 @@ const NavegacionScreen = () => {
                 destination.longitude,
             )
 
-            console.log(`📏 Distancia al ${mode}:`, distance.toFixed(1), "metros")
+            console.log(`Distancia al ${mode}:`, distance.toFixed(1), "metros")
 
             // Usar diferentes umbrales según el modo
             const threshold = mode === "parking" ? 30 : ARRIVAL_THRESHOLD
@@ -911,9 +1037,9 @@ const NavegacionScreen = () => {
                 // Incrementar contador de llegadas consecutivas
                 setConsecutiveArrivalChecks((prev) => prev + 1)
 
-                // Solo considerar llegada después de 3 verificaciones consecutivas
+                // Solo considerar llegada después de 2 verificaciones consecutivas
                 if (consecutiveArrivalChecks >= 2) {
-                    console.log(`🎯 ¡Llegada confirmada al ${mode}!`)
+                    console.log(`¡Llegada confirmada al ${mode}!`)
                     return true
                 }
             } else {
@@ -923,7 +1049,7 @@ const NavegacionScreen = () => {
 
             return false
         } catch (error) {
-            console.error("Error verificando llegada:", error)
+            console.error("Error verificando llegada:", error.message)
             return false
         }
     }
@@ -987,7 +1113,7 @@ const NavegacionScreen = () => {
                 }).start()
             }, 400)
         } catch (error) {
-            console.error("Error mostrando modal de llegada:", error)
+            console.error("Error mostrando modal de llegada:", error.message)
         }
     }
 
@@ -1020,6 +1146,7 @@ const NavegacionScreen = () => {
     // Función para mostrar la pregunta de estacionamiento
     const showParkingQuestion = () => {
         try {
+            console.log("Mostrando modal de estacionamiento encontrado")
             setShowParkingModal(true)
 
             // Animaciones del modal
@@ -1037,29 +1164,32 @@ const NavegacionScreen = () => {
                 }),
             ]).start()
         } catch (error) {
-            console.error("Error mostrando modal de estacionamiento:", error)
+            console.error("Error mostrando modal de estacionamiento:", error.message)
         }
     }
 
     const searchParkingDirectly = async () => {
         try {
+            console.log("Iniciando búsqueda de estacionamiento...")
             setIsSearchingParking(true)
             setShowArrivalModal(false)
+            setNetworkError(null)
 
             if (!currentLocation || !currentLocation.latitude || !currentLocation.longitude) {
                 console.error("Ubicación actual no válida")
                 setIsSearchingParking(false)
+                Alert.alert("Error", "No se pudo obtener la ubicación actual para buscar estacionamiento.")
                 return
             }
 
             // Registrar búsqueda en BD de manera no bloqueante
-            iniciarBusquedaEstacionamientoEnBD(currentLocation).catch((error) => {
-                console.error("Error en BD (no crítico):", error)
-            })
+            iniciarBusquedaEstacionamientoEnBD(currentLocation).catch(() => { })
 
+            console.log("Buscando estacionamientos cercanos...")
             const nearbyParking = await findNearbyParkingStreets(currentLocation, 200)
 
             if (nearbyParking && nearbyParking.length > 0) {
+                console.log("Estacionamientos encontrados:", nearbyParking.length)
 
                 const validParking = nearbyParking.filter(
                     (parking) =>
@@ -1080,6 +1210,7 @@ const NavegacionScreen = () => {
                     return
                 }
 
+                console.log("Estacionamientos válidos:", validParking.length)
 
                 setAllNearbyParking(validParking)
                 const topParking = validParking.slice(0, 5)
@@ -1096,6 +1227,8 @@ const NavegacionScreen = () => {
                     setShowParkingRadius(true)
                     setIsSearchingParking(false)
 
+                    setIs3DMode(false)
+
                     // Animar la barra superior
                     Animated.timing(previewSlideAnim, {
                         toValue: 0,
@@ -1103,8 +1236,23 @@ const NavegacionScreen = () => {
                         useNativeDriver: true,
                     }).start()
 
+                    if (mapRef.current) {
+                        mapRef.current.animateCamera(
+                            {
+                                center: currentLocation,
+                                pitch: 0, // Vista desde arriba
+                                heading: 0,
+                                zoom: 17, // Zoom más alejado para ver más estacionamientos
+                                altitude: 1500,
+                            },
+                            { duration: 500 },
+                        )
+                    }
+
+                    console.log("Vista de estacionamientos configurada correctamente (2D)")
                 }, 100)
             } else {
+                console.log("No se encontraron estacionamientos")
                 setIsSearchingParking(false)
                 Alert.alert(
                     "Sin estacionamientos",
@@ -1116,7 +1264,7 @@ const NavegacionScreen = () => {
                 )
             }
         } catch (error) {
-            console.error("Error en búsqueda de estacionamiento:", error)
+            console.error("Error en búsqueda de estacionamiento:", error.message)
             setIsSearchingParking(false)
             Alert.alert("Error", "Hubo un problema al buscar estacionamientos. ¿Deseas reintentar?", [
                 { text: "Reintentar", onPress: () => searchParkingDirectly() },
@@ -1127,6 +1275,7 @@ const NavegacionScreen = () => {
 
     const handleParkingResponse = async (foundParking) => {
         try {
+            console.log("Respuesta de estacionamiento:", foundParking ? "Encontrado" : "No encontrado")
 
             // Validar datos necesarios antes de proceder
             if (!currentLocation) {
@@ -1139,7 +1288,9 @@ const NavegacionScreen = () => {
                 let nombreCalle = "Calle no identificada"
                 const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
                 if (endCoords) {
+                    console.log("Obteniendo nombre de calle para coordenadas:", endCoords.lat, endCoords.lng)
                     nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
+                    console.log("Nombre de calle obtenido:", nombreCalle)
                 }
 
                 // Usuario encontró estacionamiento, finalizar viaje con datos completos
@@ -1153,56 +1304,53 @@ const NavegacionScreen = () => {
                     calle_estacionamiento: nombreCalle,
                 }
 
+                console.log("Finalizando viaje con estacionamiento encontrado")
                 await finalizarViajeEnBD(datosFinalizacion)
 
                 closeParkingModal()
                 navigation.navigate("Home")
             } else {
-                // No encontró, buscar siguiente estacionamiento o mostrar opciones
                 closeParkingModal()
 
-                // Volver al modo de búsqueda para mostrar más opciones
+                // Resetear estados para nueva búsqueda
                 setNavigationMode("preview")
                 setHasArrived(false)
                 setConsecutiveArrivalChecks(0)
+                setSelectedParkingSpot(null)
+                setIsNavigatingToParking(false)
 
-                // Mostrar mensaje de búsqueda de alternativas
-                Alert.alert("Buscar Alternativa", "¿Quieres buscar otro estacionamiento cercano?", [
-                    {
-                        text: "Finalizar Viaje",
-                        onPress: async () => {
-                            let nombreCalle = "Calle no identificada"
-                            const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
-                            if (endCoords) {
-                                nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
-                            }
+                setIs3DMode(false)
+                setShowParkingPreview(true)
+                setShowParkingRadius(true)
 
-                            const datosFinalizacion = {
-                                estado: "completado",
-                                distancia_final: totalDistanceTraveled || 0,
-                                encontro_lugar_busqueda: false,
-                                ubicacion_final_lat: endCoords?.lat || currentLocation.latitude,
-                                ubicacion_final_lng: endCoords?.lng || currentLocation.longitude,
-                                id_mapeado: selectedParkingSpot?.id || null,
-                                calle_estacionamiento: nombreCalle,
-                            }
-
-                            console.log("Finalizando viaje sin encontrar estacionamiento")
-                            await finalizarViajeEnBD(datosFinalizacion)
-                            navigation.navigate("Home")
+                // Centrar mapa con vista desde arriba
+                if (mapRef.current) {
+                    mapRef.current.animateCamera(
+                        {
+                            center: currentLocation,
+                            pitch: 0,
+                            heading: 0,
+                            zoom: 17,
+                            altitude: 1500,
                         },
-                    },
-                    {
-                        text: "Buscar Otro",
-                        onPress: () => {
-                            // Mantener en modo preview para seleccionar otro estacionamiento
-                            console.log("Usuario quiere buscar otro estacionamiento")
-                        },
-                    },
-                ])
+                        { duration: 500 },
+                    )
+                }
+
+                // Mostrar barra superior de estacionamiento
+                Animated.timing(previewSlideAnim, {
+                    toValue: 0,
+                    duration: 300,
+                    useNativeDriver: true,
+                }).start()
+
+                // Notificar al usuario
+                if (isVoiceEnabled) {
+                    speakInstruction("Selecciona otro estacionamiento en el mapa")
+                }
             }
         } catch (error) {
-            console.error("Error manejando respuesta de estacionamiento:", error)
+            console.error("Error manejando respuesta de estacionamiento:", error.message)
             Alert.alert("Error", "Hubo un problema. Intenta finalizar el viaje manualmente.")
         }
     }
@@ -1216,17 +1364,17 @@ const NavegacionScreen = () => {
                     useNativeDriver: true,
                 }),
                 Animated.timing(parkingModalScaleAnim, {
-                    toValue: 0.8,
+                    toValue: 0.5,
                     duration: 200,
                     useNativeDriver: true,
                 }),
             ]).start(() => {
                 setShowParkingModal(false)
-                setHasArrived(false) // Reset para permitir nueva detección
+                setHasArrived(false)
                 setConsecutiveArrivalChecks(0)
             })
         } catch (error) {
-            console.error("Error cerrando modal de estacionamiento:", error)
+            console.error("Error cerrando modal de estacionamiento:", error.message)
         }
     }
 
@@ -1235,19 +1383,20 @@ const NavegacionScreen = () => {
         setShowParkingOptionsModal(true)
     }
 
-    // Función para iniciar navegación automática al estacionamiento
     const startAutomaticNavigation = () => {
         if (parkingOptions.length > 0) {
             const firstParking = parkingOptions[0]
             setSelectedParkingSpot(firstParking)
             setIsNavigatingToParking(true)
             setNavigationMode("parking")
-            setHasArrived(false) // Reset para nueva navegación
+            setHasArrived(false)
             setConsecutiveArrivalChecks(0)
             announceNavigationMode("parking")
             setShowParkingPreview(false)
             setShowParkingOptionsModal(false)
             setHasInitializedRoute(false)
+
+            setIs3DMode(true)
 
             // Ocultar barra superior
             Animated.timing(previewSlideAnim, {
@@ -1268,31 +1417,37 @@ const NavegacionScreen = () => {
                     1000,
                 )
             }
+
+            if (isVoiceEnabled) {
+                speakInstruction("Iniciando navegación automática al estacionamiento más cercano")
+            }
         }
     }
 
     const selectParkingSpot = (spot) => {
         try {
+            console.log("Estacionamiento seleccionado:", spot.streetName)
             setSelectedParkingSpot(spot)
             setNavigationMode("parking")
             setHasArrived(false)
             setConsecutiveArrivalChecks(0)
         } catch (error) {
-            console.error("Error seleccionando estacionamiento:", error)
+            console.error("Error seleccionando estacionamiento:", error.message)
         }
     }
 
-    // Función para seleccionar estacionamiento manualmente
     const selectParkingManually = (parking) => {
         setSelectedParkingSpot(parking)
         setIsNavigatingToParking(true)
         setNavigationMode("parking")
-        setHasArrived(false) // Reset para nueva navegación
+        setHasArrived(false)
         setConsecutiveArrivalChecks(0)
         announceNavigationMode("parking")
         setShowParkingPreview(false)
         setShowParkingOptionsModal(false)
         setHasInitializedRoute(false)
+
+        setIs3DMode(true)
 
         // Ocultar barra superior
         Animated.timing(previewSlideAnim, {
@@ -1313,6 +1468,10 @@ const NavegacionScreen = () => {
                 1000,
             )
         }
+
+        if (isVoiceEnabled) {
+            speakInstruction("Navegando hacia el estacionamiento seleccionado")
+        }
     }
 
     // Función para ir al siguiente estacionamiento (navegación automática)
@@ -1321,20 +1480,21 @@ const NavegacionScreen = () => {
             const nextIndex = currentParkingIndex + 1
             setCurrentParkingIndex(nextIndex)
             setSelectedParkingSpot(parkingOptions[nextIndex])
-            setHasArrived(false) // Reset para nueva navegación
+            setHasArrived(false)
             setConsecutiveArrivalChecks(0)
             setHasInitializedRoute(false)
 
             // Centrar mapa en el siguiente estacionamiento
             if (mapRef.current) {
-                mapRef.current.animateToRegion(
+                mapRef.current.animateCamera(
                     {
-                        latitude: parkingOptions[nextIndex].midPoint.latitude,
-                        longitude: parkingOptions[nextIndex].midPoint.longitude,
-                        latitudeDelta: 0.01,
-                        longitudeDelta: 0.01,
+                        center: parkingOptions[nextIndex].midPoint,
+                        pitch: 65,
+                        heading: userHeading,
+                        zoom: 18,
+                        altitude: 500,
                     },
-                    1000,
+                    { duration: 1000 },
                 )
             }
         } else {
@@ -1359,6 +1519,7 @@ const NavegacionScreen = () => {
         const endCoords = getEndCoordsForStreetName(selectedParkingSpot, currentLocation)
         let nombreCalle = selectedParkingSpot?.streetName || null
         if (!nombreCalle && endCoords) {
+            console.log("Resolviendo nombre de calle para confirmParkingFound")
             nombreCalle = await obtenerNombreCalle(endCoords.lat, endCoords.lng)
         }
 
@@ -1388,7 +1549,6 @@ const NavegacionScreen = () => {
         navigation.navigate("Home")
     }
 
-    // Función para finalizar desde la vista previa
     const finalizeParkingPreview = async () => {
         await finalizarViajeEnBD({
             estado: "completado",
@@ -1414,7 +1574,7 @@ const NavegacionScreen = () => {
         navigation.navigate("Home")
     }
 
-    // Función para manejar llegada al estacionamiento
+    // Función mejorada para manejar llegada al estacionamiento
     const handleParkingArrival = () => {
         // Mostrar modal preguntando si encontró espacio
         showParkingQuestion()
@@ -1432,6 +1592,19 @@ const NavegacionScreen = () => {
         navigation.navigate("Home")
     }
 
+    // Función para finalizar viaje desde el modal de llegada
+    const finishTripFromModal = async () => {
+        await finalizarViajeEnBD({
+            estado: "completado",
+            distancia_final: totalDistanceTraveled,
+            encontro_lugar_busqueda: false,
+            ubicacion_final_lat: currentLocation.latitude,
+            ubicacion_final_lng: currentLocation.longitude,
+        })
+
+        closeArrivalModal()
+    }
+
     // Lógica mejorada de navegación y detección de llegada
     useEffect(() => {
         try {
@@ -1440,15 +1613,16 @@ const NavegacionScreen = () => {
                 const currentDestination =
                     navigationMode === "parking" && selectedParkingSpot ? selectedParkingSpot.midPoint : destinationLocation
 
-
                 // Verificar llegada con lógica mejorada
                 const arrived = checkArrival(currentLocation, currentDestination, navigationMode)
 
                 if (arrived && !hasArrived) {
+                    console.log("¡Llegada detectada! Modo:", navigationMode)
                     setHasArrived(true)
 
                     if (navigationMode === "parking" && selectedParkingSpot) {
                         // Llegó al estacionamiento seleccionado
+                        console.log("Llegada al estacionamiento seleccionado:", selectedParkingSpot.streetName)
                         if (isVoiceEnabled) {
                             speakInstruction("Has llegado al área de estacionamiento")
                         }
@@ -1505,7 +1679,7 @@ const NavegacionScreen = () => {
                 }
             }
         } catch (error) {
-            console.error("Error en lógica de navegación:", error)
+            console.error("Error en lógica de navegación:", error.message)
         }
     }, [
         currentLocation,
@@ -1603,13 +1777,17 @@ const NavegacionScreen = () => {
     }
 
     // Función para finalizar viaje
-    const finalizarViaje = async (foundParking) => {
+    const finalizarViaje = async (foundParkingArg) => {
+        // Renamed parameter to avoid conflict
         try {
             if (!currentLocation) {
                 console.error("Error: currentLocation no disponible")
                 Alert.alert("Error", "No se pudo obtener la ubicación actual")
                 return
             }
+
+            // Determine if parking was found based on the argument or current state
+            const foundParking = typeof foundParkingArg !== "undefined" ? foundParkingArg : false // Use argument if provided, else default to false
 
             if (foundParking) {
                 let nombreCalle = "Calle no identificada"
@@ -1623,6 +1801,7 @@ const NavegacionScreen = () => {
                         selectedParkingSpot.midPoint.latitude,
                         selectedParkingSpot.midPoint.longitude,
                     )
+                    console.log("Nombre de calle obtenido:", nombreCalle)
                 }
 
                 // Usuario encontró estacionamiento, finalizar viaje con datos completos
@@ -1636,6 +1815,7 @@ const NavegacionScreen = () => {
                     calle_estacionamiento: nombreCalle,
                 }
 
+                console.log("Finalizando viaje con estacionamiento encontrado")
                 await finalizarViajeEnBD(datosFinalizacion)
 
                 closeParkingModal()
@@ -1656,10 +1836,12 @@ const NavegacionScreen = () => {
                         onPress: async () => {
                             let nombreCalle = "Calle no identificada"
                             if (selectedParkingSpot?.midPoint?.latitude && selectedParkingSpot?.midPoint?.longitude) {
+                                console.log("Obteniendo nombre de calle para finalización sin encontrar")
                                 nombreCalle = await obtenerNombreCalle(
                                     selectedParkingSpot.midPoint.latitude,
                                     selectedParkingSpot.midPoint.longitude,
                                 )
+                                console.log("Nombre de calle para finalización:", nombreCalle)
                             }
 
                             const datosFinalizacion = {
@@ -1672,6 +1854,7 @@ const NavegacionScreen = () => {
                                 calle_estacionamiento: nombreCalle,
                             }
 
+                            console.log("Finalizando viaje sin encontrar estacionamiento")
                             await finalizarViajeEnBD(datosFinalizacion)
                             navigation.navigate("Home")
                         },
@@ -1686,23 +1869,42 @@ const NavegacionScreen = () => {
                 ])
             }
         } catch (error) {
-            console.error("Error manejando respuesta de estacionamiento:", error)
-            Alert.alert("Error", "Hubo un problema. Intenta finalizar el viaje manualmente.")
+            console.error("Error finalizando viaje:", error.message)
+            Alert.alert("Error", "Hubo un problema finalizando el viaje. Intenta nuevamente.")
         }
     }
 
-    const finishTripFromModal = async () => {
-        // Finalizar viaje como completado sin búsqueda de estacionamiento
-        await finalizarViajeEnBD({
-            estado: "completado",
-            distancia_final: totalDistanceTraveled,
-            encontro_lugar_busqueda: null, // No hubo búsqueda
-            ubicacion_final_lat: currentLocation.latitude,
-            ubicacion_final_lng: currentLocation.longitude,
-        })
+    useEffect(() => {
+        // Verificar si está fuera de la ruta (solo si ya tenemos una ruta)
+        if (routeCoordinates.length > 0 && !isRecalculating && hasInitializedRoute && currentLocation) {
+            const offRoute = checkIfOffRoute(currentLocation, routeCoordinates)
+            const now = Date.now()
 
-        closeArrivalModal()
-    }
+            if (offRoute && !isOffRoute) {
+                // Verificar que haya pasado suficiente tiempo desde el último recálculo
+                if (now - lastRerouteTime >= MIN_REROUTE_INTERVAL) {
+                    console.log("Usuario fuera de la ruta, programando recálculo...")
+                    setIsOffRoute(true)
+
+                    // Limpiar timeout anterior si existe
+                    if (recalculateTimeoutRef.current) {
+                        clearTimeout(recalculateTimeoutRef.current)
+                    }
+
+                    recalculateTimeoutRef.current = setTimeout(() => {
+                        recalculateRoute()
+                    }, REROUTE_DEBOUNCE)
+                }
+            } else if (!offRoute && isOffRoute) {
+                // Usuario volvió a la ruta, cancelar recálculo pendiente
+                setIsOffRoute(false)
+                if (recalculateTimeoutRef.current) {
+                    clearTimeout(recalculateTimeoutRef.current)
+                    recalculateTimeoutRef.current = null
+                }
+            }
+        }
+    }, [currentLocation, routeCoordinates, isRecalculating, hasInitializedRoute, isOffRoute, lastRerouteTime])
 
     return (
         <View style={styles.container}>
@@ -1722,9 +1924,29 @@ const NavegacionScreen = () => {
                 followsUserLocation={!isNavigatingToParking && !showParkingPreview}
                 pitchEnabled={true}
                 rotateEnabled={true}
-                showsCompass={false}
+                showsCompass={true}
                 showsMyLocationButton={false}
                 toolbarEnabled={false}
+                camera={
+                    // Vista 2D para modo preview de estacionamiento
+                    showParkingPreview || navigationMode === "preview"
+                        ? {
+                            center: currentLocation,
+                            pitch: 0,
+                            heading: 0,
+                            zoom: 17,
+                            altitude: 1500,
+                        }
+                        : is3DMode
+                            ? {
+                                center: currentLocation,
+                                pitch: 65,
+                                heading: userHeading,
+                                zoom: 18,
+                                altitude: 500,
+                            }
+                            : undefined
+                }
             >
                 <Marker coordinate={currentLocation} title="Ubicación Actual" />
 
@@ -1787,7 +2009,7 @@ const NavegacionScreen = () => {
                                 </View>
                             )
                         } catch (renderError) {
-                            console.error(`Error renderizando estacionamiento ${index}:`, renderError)
+                            console.error(`Error renderizando estacionamiento ${index}:`, renderError.message)
                             return null
                         }
                     })}
@@ -1817,7 +2039,7 @@ const NavegacionScreen = () => {
                         apikey={Config.GOOGLE_MAPS_APIKEY}
                         language="es"
                         strokeWidth={6}
-                        strokeColor="#9B59B6"
+                        strokeColor="#FF6B35"
                         optimizeWaypoints={true}
                         onReady={handleDirectionsReady}
                         onError={handleDirectionsError}
@@ -1827,21 +2049,16 @@ const NavegacionScreen = () => {
                 )}
             </MapView>
 
-            {/* Indicador de recálculo */}
-            {/* {isRecalculating && (
-                <View style={styles.recalculatingIndicator}>
-                    <Icon name="refresh" size={wp(4)} color="#FFFFFF" />
-                    <Text style={styles.recalculatingText}>Recalculando ruta...</Text>
+            {/* Banner de error de red */}
+            {networkError && (
+                <View style={styles.networkErrorBanner}>
+                    <Icon name="wifi-off" size={wp(4)} color="#FFFFFF" />
+                    <Text style={styles.networkErrorText}>{networkError.message}</Text>
+                    <TouchableOpacity onPress={() => setNetworkError(null)}>
+                        <Icon name="close" size={wp(4)} color="#FFFFFF" />
+                    </TouchableOpacity>
                 </View>
-            )} */}
-
-            {/* Indicador de fuera de ruta */}
-            {/* {isOffRoute && !isRecalculating && (
-                <View style={styles.offRouteIndicator}>
-                    <Icon name="warning" size={wp(4)} color="#FFFFFF" />
-                    <Text style={styles.offRouteText}>Fuera de ruta</Text>
-                </View>
-            )} */}
+            )}
 
             {/* Barra superior de estacionamiento (Vista previa) */}
             {showParkingPreview && (
@@ -2159,7 +2376,7 @@ const NavegacionScreen = () => {
 
                         {/* Contenido del modal */}
                         <View style={styles.modalContent}>
-                            <Text style={styles.arrivalTitle}>🎉 ¡Has Llegado!</Text>
+                            <Text style={styles.arrivalTitle}>¡Has Llegado!</Text>
                             <Text style={styles.arrivalSubtitle}>Destino alcanzado exitosamente</Text>
 
                             <View style={styles.destinationInfo}>
@@ -2201,15 +2418,12 @@ const NavegacionScreen = () => {
                                     <Text style={styles.finishTripButtonText}>Finalizar Viaje</Text>
                                 </TouchableOpacity>
                             </View>
-
-                            {/* Mensaje adicional */}
-                            <Text style={styles.thankYouText}>¡Gracias por usar DriveSmart!</Text>
                         </View>
                     </Animated.View>
                 </View>
             </Modal>
 
-            {/* Modal de pregunta de estacionamiento (solo cuando llega al parking) */}
+            {/* Modal de estacionamiento mejorado con ciclo de búsqueda */}
             <Modal visible={showParkingModal} transparent={true} animationType="none">
                 <View style={styles.modalOverlay}>
                     <Animated.View
@@ -2221,10 +2435,13 @@ const NavegacionScreen = () => {
                             },
                         ]}
                     >
+                        <Icon name="local-parking" size={wp(15)} color="#9B59B6" />
+
                         <View style={styles.questionContent}>
-                            <Icon name="local-parking" size={wp(12)} color="#FF6B35" />
-                            <Text style={styles.questionTitle}>🅿️ ¿Encontraste Estacionamiento?</Text>
-                            <Text style={styles.questionSubtitle}>¿Pudiste encontrar un lugar para aparcar en esta área?</Text>
+                            <Text style={styles.questionTitle}>¿Encontraste estacionamiento?</Text>
+                            <Text style={styles.questionSubtitle}>
+                                Has llegado al área de estacionamiento seleccionada. ¿Pudiste encontrar un lugar disponible?
+                            </Text>
 
                             <View style={styles.questionButtons}>
                                 <TouchableOpacity
@@ -2232,7 +2449,7 @@ const NavegacionScreen = () => {
                                     onPress={() => handleParkingResponse(true)}
                                     activeOpacity={0.8}
                                 >
-                                    <Icon name="check-circle" size={wp(5)} color="#FFFFFF" />
+                                    <Icon name="check" size={wp(4)} color="#FFFFFF" />
                                     <Text style={styles.yesButtonText}>Sí, encontré</Text>
                                 </TouchableOpacity>
 
@@ -2241,7 +2458,7 @@ const NavegacionScreen = () => {
                                     onPress={() => handleParkingResponse(false)}
                                     activeOpacity={0.8}
                                 >
-                                    <Icon name="search" size={wp(5)} color="#FFFFFF" />
+                                    <Icon name="search" size={wp(4)} color="#FFFFFF" />
                                     <Text style={styles.noButtonText}>Buscar otro</Text>
                                 </TouchableOpacity>
                             </View>
@@ -2255,40 +2472,34 @@ const NavegacionScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.parkingOptionsModal}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalHeaderTitle}>🅿️ Opciones de Estacionamiento</Text>
-                            <TouchableOpacity
-                                style={styles.closeModalButton}
-                                onPress={() => setShowParkingOptionsModal(false)}
-                                activeOpacity={0.8}
-                            >
-                                <Icon name="close" size={wp(6)} color="#7F8C8D" />
+                            <Text style={styles.modalHeaderTitle}>Estacionamientos Cercanos</Text>
+                            <TouchableOpacity style={styles.closeModalButton} onPress={() => setShowParkingOptionsModal(false)}>
+                                <Icon name="close" size={wp(6)} color="#2C3E50" />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={styles.modalSubtitle}>
-                            {allNearbyParking.length > 0
-                                ? `Encontramos ${allNearbyParking.length} opciones dentro de 200m`
-                                : "No se encontraron estacionamientos en el área"}
-                        </Text>
-
-                        {allNearbyParking.length > 0 ? (
+                        {parkingOptions.length > 0 ? (
                             <>
-                                {/* Botones de navegación */}
+                                <Text style={styles.modalSubtitle}>
+                                    {parkingOptions.length} opciones encontradas en un radio de 200m
+                                </Text>
+
+                                {/* Botón de navegación automática */}
                                 <View style={styles.navigationModeButtons}>
                                     <TouchableOpacity
                                         style={styles.automaticButton}
                                         onPress={startAutomaticNavigation}
                                         activeOpacity={0.8}
                                     >
-                                        <Icon name="navigation" size={wp(5)} color="#FFFFFF" />
+                                        <Icon name="navigation" size={wp(6)} color="#FFFFFF" />
                                         <Text style={styles.automaticButtonText}>Navegación Automática</Text>
-                                        <Text style={styles.automaticButtonSubtext}>Ruta más óptima</Text>
+                                        <Text style={styles.automaticButtonSubtext}>Te guiaremos al más cercano</Text>
                                     </TouchableOpacity>
                                 </View>
 
                                 {/* Lista de estacionamientos */}
                                 <ScrollView style={styles.parkingList} showsVerticalScrollIndicator={false}>
-                                    {allNearbyParking.map((parking, index) => (
+                                    {parkingOptions.map((parking, index) => (
                                         <TouchableOpacity
                                             key={parking.id}
                                             style={[
@@ -2309,7 +2520,7 @@ const NavegacionScreen = () => {
                                                 <Text style={styles.parkingOptionType}>
                                                     {parking.parkingType.replace("ESTACIONAMIENTO ", "")}
                                                 </Text>
-                                                <Text style={styles.parkingOptionDistance}>📍 {parking.distance.toFixed(0)}m de distancia</Text>
+                                                <Text style={styles.parkingOptionDistance}>{parking.distance.toFixed(0)}m de distancia</Text>
                                             </View>
 
                                             <Icon name="chevron-right" size={wp(5)} color="#BDC3C7" />
@@ -2363,7 +2574,7 @@ const NavegacionScreen = () => {
                     <View style={styles.modalOverlay}>
                         <View style={styles.searchingModal}>
                             <Icon name="search" size={wp(15)} color="#FF6B35" />
-                            <Text style={styles.searchingTitle}>🔍 Buscando Estacionamiento</Text>
+                            <Text style={styles.searchingTitle}>Buscando Estacionamiento</Text>
                             <Text style={styles.searchingSubtitle}>Analizando calles cercanas...</Text>
                             <View style={styles.loadingDots}>
                                 <View style={styles.dot} />
@@ -2385,6 +2596,29 @@ const styles = StyleSheet.create({
     },
     map: {
         flex: 1,
+    },
+    // Estilos para banner de error de red
+    networkErrorBanner: {
+        position: "absolute",
+        top: Platform.OS === "ios" ? hp(12) : hp(10),
+        left: wp(4),
+        right: wp(4),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: "rgba(231, 76, 60, 0.95)",
+        borderRadius: wp(2),
+        paddingHorizontal: wp(3),
+        paddingVertical: wp(2.5),
+        zIndex: 25,
+    },
+    networkErrorText: {
+        flex: 1,
+        color: "#FFFFFF",
+        fontSize: wp(3.5),
+        fontWeight: "600",
+        marginLeft: wp(2),
+        marginRight: wp(2),
     },
     // Indicadores de estado
     recalculatingIndicator: {
